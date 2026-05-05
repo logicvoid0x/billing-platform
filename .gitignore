@@ -1,0 +1,9 @@
+# Quota guard runtime files
+.claude/state/
+.claude/hooks/classes/
+.claude/state-compile-error.txt
+.claude/settings.local.json
+
+# Gradle
+.gradle/
+build/
