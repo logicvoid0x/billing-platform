@@ -1,0 +1,92 @@
+# Single source of versions. Resolved 2026-11-01; see docs/decisions/0001-versions.md.
+[versions]
+kafka = "4.3.2"
+flink = "2.2.1"
+flinkKafkaConnector = "5.0.0-2.2"
+ratis = "3.2.2"
+springBoot = "4.1.2"
+springDependencyManagement = "1.1.7"
+grpc = "1.85.1"
+protobuf = "4.36.2"
+protobufPlugin = "0.10.0"
+postgresJdbc = "42.7.14"
+flyway = "13.12.0"
+stripe = "34.1.0"
+iceberg = "1.12.0"
+lettuce = "7.9.0.RELEASE"
+micrometer = "1.17.2"
+opentelemetry = "1.67.0"
+slf4j = "2.0.20"
+jakartaAnnotation = "3.0.0"
+junit = "6.1.3"
+assertj = "3.27.7"
+jqwik = "1.10.2"
+archunit = "1.5.1"
+testcontainers = "2.0.5"
+jmh = "1.37"
+jmhPlugin = "0.7.4"
+shadow = "9.6.1"
+spotless = "8.10.4"
+googleJavaFormat = "2.0.0"
+errorprone = "2.51.0"          # Java 21 modules; 2.43.0+ needs JDK 21 to run
+errorproneJdk17 = "2.42.0"     # last release that runs on JDK 17 (Java 17 modules)
+errorpronePlugin = "5.2.0"
+jacoco = "0.8.16"
+
+[libraries]
+kafka-clients = { module = "org.apache.kafka:kafka-clients", version.ref = "kafka" }
+flink-streaming = { module = "org.apache.flink:flink-streaming-java", version.ref = "flink" }
+flink-clients = { module = "org.apache.flink:flink-clients", version.ref = "flink" }
+flink-connector-kafka = { module = "org.apache.flink:flink-connector-kafka", version.ref = "flinkKafkaConnector" }
+flink-test-utils = { module = "org.apache.flink:flink-test-utils", version.ref = "flink" }
+ratis-server = { module = "org.apache.ratis:ratis-server", version.ref = "ratis" }
+ratis-grpc = { module = "org.apache.ratis:ratis-grpc", version.ref = "ratis" }
+grpc-bom = { module = "io.grpc:grpc-bom", version.ref = "grpc" }
+grpc-protobuf = { module = "io.grpc:grpc-protobuf" }
+grpc-stub = { module = "io.grpc:grpc-stub" }
+grpc-netty = { module = "io.grpc:grpc-netty-shaded" }
+grpc-inprocess = { module = "io.grpc:grpc-inprocess" }
+protoc-gen-grpc-java = { module = "io.grpc:protoc-gen-grpc-java", version.ref = "grpc" }
+protobuf-java = { module = "com.google.protobuf:protobuf-java", version.ref = "protobuf" }
+protoc = { module = "com.google.protobuf:protoc", version.ref = "protobuf" }
+postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresJdbc" }
+flyway-core = { module = "org.flywaydb:flyway-core", version.ref = "flyway" }
+flyway-postgresql = { module = "org.flywaydb:flyway-database-postgresql", version.ref = "flyway" }
+stripe-java = { module = "com.stripe:stripe-java", version.ref = "stripe" }
+iceberg-core = { module = "org.apache.iceberg:iceberg-core", version.ref = "iceberg" }
+lettuce-core = { module = "io.lettuce:lettuce-core", version.ref = "lettuce" }
+micrometer-bom = { module = "io.micrometer:micrometer-bom", version.ref = "micrometer" }
+opentelemetry-bom = { module = "io.opentelemetry:opentelemetry-bom", version.ref = "opentelemetry" }
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+jakarta-annotation = { module = "jakarta.annotation:jakarta.annotation-api", version.ref = "jakartaAnnotation" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+jqwik = { module = "net.jqwik:jqwik", version.ref = "jqwik" }
+archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref = "archunit" }
+testcontainers-bom = { module = "org.testcontainers:testcontainers-bom", version.ref = "testcontainers" }
+testcontainers-junit = { module = "org.testcontainers:testcontainers-junit-jupiter" }
+testcontainers-kafka = { module = "org.testcontainers:testcontainers-kafka" }
+testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql" }
+testcontainers-toxiproxy = { module = "org.testcontainers:testcontainers-toxiproxy" }
+jmh-core = { module = "org.openjdk.jmh:jmh-core", version.ref = "jmh" }
+errorprone-core = { module = "com.google.errorprone:error_prone_core", version.ref = "errorprone" }
+errorprone-core-jdk17 = { module = "com.google.errorprone:error_prone_core", version.ref = "errorproneJdk17" }
+# Plugin artifacts used as build-logic dependencies (convention plugins apply them by id).
+gradle-spring-boot = { module = "org.springframework.boot:spring-boot-gradle-plugin", version.ref = "springBoot" }
+gradle-spring-dependency-management = { module = "io.spring.gradle:dependency-management-plugin", version.ref = "springDependencyManagement" }
+gradle-shadow = { module = "com.gradleup.shadow:shadow-gradle-plugin", version.ref = "shadow" }
+gradle-spotless = { module = "com.diffplug.spotless:spotless-plugin-gradle", version.ref = "spotless" }
+gradle-errorprone = { module = "net.ltgt.gradle:gradle-errorprone-plugin", version.ref = "errorpronePlugin" }
+gradle-protobuf = { module = "com.google.protobuf:protobuf-gradle-plugin", version.ref = "protobufPlugin" }
+gradle-jmh = { module = "me.champeau.jmh:jmh-gradle-plugin", version.ref = "jmhPlugin" }
+
+[plugins]
+spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }
+spring-dependency-management = { id = "io.spring.dependency-management", version.ref = "springDependencyManagement" }
+shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
+spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
+errorprone = { id = "net.ltgt.errorprone", version.ref = "errorpronePlugin" }
+protobuf = { id = "com.google.protobuf", version.ref = "protobufPlugin" }
+jmh = { id = "me.champeau.jmh", version.ref = "jmhPlugin" }
