@@ -1,3 +1,5 @@
+pluginManagement { includeBuild("build-logic") }
+
 plugins {
     // Auto-provisions the Java 17 and 21 toolchains.
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
