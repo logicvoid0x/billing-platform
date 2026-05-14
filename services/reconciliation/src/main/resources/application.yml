@@ -1,0 +1,6 @@
+spring:
+  application:
+    name: reconciliation
+  threads:
+    virtual:
+      enabled: true

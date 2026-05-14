@@ -1,0 +1,6 @@
+spring:
+  application:
+    name: rating-engine
+  threads:
+    virtual:
+      enabled: true

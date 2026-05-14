@@ -1,0 +1,6 @@
+spring:
+  application:
+    name: usage-view
+  threads:
+    virtual:
+      enabled: true

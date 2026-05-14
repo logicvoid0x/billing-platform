@@ -7,3 +7,7 @@ plugins {
 }
 
 java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
+
+dependencies {
+    implementation("org.springframework.boot:spring-boot-starter") // version from the Spring Boot BOM
+}

@@ -10,3 +10,10 @@ java { toolchain { languageVersion = JavaLanguageVersion.of(17) } }
 val flinkProvided = configurations.dependencyScope("flinkProvided").get()
 configurations.compileOnly { extendsFrom(flinkProvided) }
 configurations.testImplementation { extendsFrom(flinkProvided) }
+
+val libs = the<VersionCatalogsExtension>().named("libs")
+
+dependencies {
+    flinkProvided(libs.findLibrary("flink-streaming").get())
+    flinkProvided(libs.findLibrary("flink-clients").get())
+}

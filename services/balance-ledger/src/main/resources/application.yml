@@ -1,0 +1,6 @@
+spring:
+  application:
+    name: balance-ledger
+  threads:
+    virtual:
+      enabled: true

@@ -1,0 +1,6 @@
+spring:
+  application:
+    name: budget-shard
+  threads:
+    virtual:
+      enabled: true

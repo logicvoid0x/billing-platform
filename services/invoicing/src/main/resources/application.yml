@@ -1,0 +1,6 @@
+spring:
+  application:
+    name: invoicing
+  threads:
+    virtual:
+      enabled: true
