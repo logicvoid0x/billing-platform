@@ -8,6 +8,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 class InvoicingApplicationTest {
   @Test
   void isSpringBootApplication() {
-    assertThat(InvoicingApplication.class.isAnnotationPresent(SpringBootApplication.class)).isTrue();
+    assertThat(InvoicingApplication.class.isAnnotationPresent(SpringBootApplication.class))
+        .isTrue();
   }
 }

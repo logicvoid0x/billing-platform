@@ -4,4 +4,6 @@ dependencies {
     implementation(libs.gradle.spring.boot)
     implementation(libs.gradle.spring.dependency.management)
     implementation(libs.gradle.shadow)
+    implementation(libs.gradle.spotless)
+    implementation(libs.gradle.errorprone)
 }

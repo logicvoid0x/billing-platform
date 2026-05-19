@@ -8,6 +8,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 class ReconciliationApplicationTest {
   @Test
   void isSpringBootApplication() {
-    assertThat(ReconciliationApplication.class.isAnnotationPresent(SpringBootApplication.class)).isTrue();
+    assertThat(ReconciliationApplication.class.isAnnotationPresent(SpringBootApplication.class))
+        .isTrue();
   }
 }

@@ -8,6 +8,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 class UsageViewApplicationTest {
   @Test
   void isSpringBootApplication() {
-    assertThat(UsageViewApplication.class.isAnnotationPresent(SpringBootApplication.class)).isTrue();
+    assertThat(UsageViewApplication.class.isAnnotationPresent(SpringBootApplication.class))
+        .isTrue();
   }
 }

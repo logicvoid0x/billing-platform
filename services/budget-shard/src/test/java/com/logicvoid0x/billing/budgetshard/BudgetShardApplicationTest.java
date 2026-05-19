@@ -8,6 +8,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 class BudgetShardApplicationTest {
   @Test
   void isSpringBootApplication() {
-    assertThat(BudgetShardApplication.class.isAnnotationPresent(SpringBootApplication.class)).isTrue();
+    assertThat(BudgetShardApplication.class.isAnnotationPresent(SpringBootApplication.class))
+        .isTrue();
   }
 }

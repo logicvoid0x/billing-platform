@@ -8,6 +8,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 class RatingEngineApplicationTest {
   @Test
   void isSpringBootApplication() {
-    assertThat(RatingEngineApplication.class.isAnnotationPresent(SpringBootApplication.class)).isTrue();
+    assertThat(RatingEngineApplication.class.isAnnotationPresent(SpringBootApplication.class))
+        .isTrue();
   }
 }

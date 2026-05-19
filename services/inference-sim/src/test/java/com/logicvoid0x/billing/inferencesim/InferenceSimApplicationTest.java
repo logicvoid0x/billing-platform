@@ -8,6 +8,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 class InferenceSimApplicationTest {
   @Test
   void isSpringBootApplication() {
-    assertThat(InferenceSimApplication.class.isAnnotationPresent(SpringBootApplication.class)).isTrue();
+    assertThat(InferenceSimApplication.class.isAnnotationPresent(SpringBootApplication.class))
+        .isTrue();
   }
 }

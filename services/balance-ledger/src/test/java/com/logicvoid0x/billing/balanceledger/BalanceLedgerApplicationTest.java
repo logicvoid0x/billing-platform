@@ -8,6 +8,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 class BalanceLedgerApplicationTest {
   @Test
   void isSpringBootApplication() {
-    assertThat(BalanceLedgerApplication.class.isAnnotationPresent(SpringBootApplication.class)).isTrue();
+    assertThat(BalanceLedgerApplication.class.isAnnotationPresent(SpringBootApplication.class))
+        .isTrue();
   }
 }
