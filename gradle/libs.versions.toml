@@ -46,7 +46,7 @@ grpc-protobuf = { module = "io.grpc:grpc-protobuf" }
 grpc-stub = { module = "io.grpc:grpc-stub" }
 grpc-netty = { module = "io.grpc:grpc-netty-shaded" }
 grpc-inprocess = { module = "io.grpc:grpc-inprocess" }
-protoc-gen-grpc-java = { module = "io.grpc:protoc-gen-grpc-java", version.ref = "grpc" }
+grpc-protoc-plugin = { module = "io.grpc:protoc-gen-grpc-java", version.ref = "grpc" }
 protobuf-java = { module = "com.google.protobuf:protobuf-java", version.ref = "protobuf" }
 protoc = { module = "com.google.protobuf:protoc", version.ref = "protobuf" }
 postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresJdbc" }

@@ -6,4 +6,5 @@ dependencies {
     implementation(libs.gradle.shadow)
     implementation(libs.gradle.spotless)
     implementation(libs.gradle.errorprone)
+    implementation(libs.gradle.protobuf)
 }

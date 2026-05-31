@@ -1,0 +1,71 @@
+// Home balance ledger: escrow to regions, usage rollups, balances. Amounts are int64 cents.
+// Every mutation is idempotent on its idempotency_key (a business key, never a send-time ID).
+syntax = "proto3";
+
+package billing.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_package = "com.logicvoid0x.billing.contracts.v1";
+option java_outer_classname = "LedgerProto";
+
+service BalanceLedger {
+  // ESCROW_GRANT: about 30 s of regional burn; refused near $0.
+  rpc RequestEscrow(EscrowRequest) returns (EscrowGrant);
+  // ESCROW_RETURN: idle escrow back to customer credit.
+  rpc ReturnEscrow(EscrowReturn) returns (LedgerAck);
+  // USAGE_ROLLUP: recognized usage from a region, every 5 s per active account.
+  rpc PostUsageRollup(UsageRollup) returns (LedgerAck);
+  rpc GetBalance(BalanceRequest) returns (Balance);
+}
+
+message EscrowRequest {
+  string org_id = 1;
+  string region = 2;
+  int64 requested_cents = 3;
+  // e.g. org_id + region + escrow sequence.
+  string idempotency_key = 4;
+}
+
+message EscrowGrant {
+  int64 granted_cents = 1;
+  // True when the account is near $0 and no new escrow is granted.
+  bool refused = 2;
+  string entry_id = 3;
+}
+
+message EscrowReturn {
+  string org_id = 1;
+  string region = 2;
+  int64 returned_cents = 3;
+  string idempotency_key = 4;
+}
+
+message UsageRollup {
+  string org_id = 1;
+  string region = 2;
+  int64 usage_cents = 3;
+  google.protobuf.Timestamp window_start = 4;
+  google.protobuf.Timestamp window_end = 5;
+  // e.g. org_id + region + window_end.
+  string idempotency_key = 6;
+}
+
+message LedgerAck {
+  string entry_id = 1;
+  // True when the idempotency key was already applied (the call was a no-op).
+  bool duplicate = 2;
+}
+
+message BalanceRequest {
+  string org_id = 1;
+}
+
+message Balance {
+  string org_id = 1;
+  int64 customer_credit_cents = 2;
+  int64 escrow_outstanding_cents = 3;
+  int64 spendable_cents = 4;
+  google.protobuf.Timestamp as_of = 5;
+}

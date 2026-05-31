@@ -1,0 +1,60 @@
+// Enforcement events on Kafka. Amounts are int64 in the budget's unit: cents for money budgets,
+// usage units for allowances. Codes are permanent strings; field numbers are never reused.
+syntax = "proto3";
+
+package billing.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_package = "com.logicvoid0x.billing.contracts.v1";
+option java_outer_classname = "BudgetProto";
+
+// Topic budget.settle, key = request_id. Joined to rated usage by request_id.
+// Idempotency key: request_id + ":" + sequence.
+message SettleRecordEvent {
+  string request_id = 1;
+  string org_id = 2;
+  string home_region = 3;
+  google.protobuf.Timestamp event_time = 4;
+  // budget_id -> amount held / settled, in the budget's unit.
+  map<string, int64> held_by_budget = 5;
+  map<string, int64> settled_by_budget = 6;
+  bool fail_open = 7;
+  string rating_library_version = 8;
+  int64 sequence = 9;
+}
+
+// Topic budget.changes, key = org_id. Idempotent on (budget_id, version).
+message BudgetChange {
+  string budget_id = 1;
+  string org_id = 2;
+  // "balance" | "spend_limit" | "allowance"
+  string kind = 3;
+  // Cap in the budget's unit; 0 for a balance.
+  int64 cap = 4;
+  // "none" | "anchored" | "calendar" | "rolling", parameters in window_params.
+  string window = 5;
+  map<string, string> window_params = 6;
+  // "open" | "closed"
+  string fail_policy = 7;
+  int64 fail_open_allowance_cents = 8;
+  int64 version = 9;
+  // Why it changed, e.g. "top_up", "config".
+  string cause = 10;
+  google.protobuf.Timestamp changed_at = 11;
+}
+
+// Topic gateway.log, key = request_id. What the customer sees for each request.
+message GatewayLogEntry {
+  string request_id = 1;
+  string org_id = 2;
+  string workspace_id = 3;
+  string api_key_id = 4;
+  string model = 5;
+  google.protobuf.Timestamp event_time = 6;
+  map<string, int64> quantities = 7;
+  int64 settled_cents = 8;
+  // "completed" | "budget_exhausted" | "client_cancelled" | "error"
+  string outcome = 9;
+}

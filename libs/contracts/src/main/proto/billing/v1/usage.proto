@@ -1,0 +1,58 @@
+// Usage events on Kafka. Quantities only: no prices, no SKUs on usage.raw.
+// Codes (meter codes) are permanent strings; field numbers are never reused.
+syntax = "proto3";
+
+package billing.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_package = "com.logicvoid0x.billing.contracts.v1";
+option java_outer_classname = "UsageProto";
+
+// Topic usage.raw, key = org_id. One event per request, from the host that delivered output.
+// Dedupe key downstream: request_id + ":" + meter code.
+message RequestUsageEvent {
+  string request_id = 1;
+  string org_id = 2;
+  string workspace_id = 3;
+  string api_key_id = 4;
+  string model = 5;
+  string service_tier = 6;
+  string host_id = 7;
+  google.protobuf.Timestamp event_time = 8;
+  // Meter code (e.g. "output_tokens") -> quantity.
+  map<string, int64> quantities = 9;
+}
+
+// Topic usage.control, key = host_id. Per host and event hour, published every minute.
+message ControlTotals {
+  string host_id = 1;
+  google.protobuf.Timestamp event_hour = 2;
+  // Increments per publish from a host; a resend reuses its sequence.
+  int64 sequence = 3;
+  int64 request_count = 4;
+  map<string, int64> quantity_by_meter = 5;
+  google.protobuf.Timestamp emitted_at = 6;
+}
+
+// Topic usage.corrections, key = org_id. Usage that arrived after the allowed lateness.
+message UsageCorrection {
+  string request_id = 1;
+  string org_id = 2;
+  string sku_id = 3;
+  string meter_code = 4;
+  int64 quantity = 5;
+  google.protobuf.Timestamp event_time = 6;
+  string reason = 7;
+}
+
+// Topic usage.dlq, key = org_id when known. Malformed or unresolvable usage, tracked as unbilled.
+message UsageDeadLetter {
+  bytes payload = 1;
+  string reason = 2;
+  string source_topic = 3;
+  int32 source_partition = 4;
+  int64 source_offset = 5;
+  google.protobuf.Timestamp failed_at = 6;
+}

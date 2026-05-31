@@ -1,0 +1,78 @@
+// Regional budget shard (Ratis-backed), as the gateway sees it. Mirrors BudgetStore.
+// Every mutation is idempotent on (request_id, sequence) or (host_id, budget_id, epoch).
+syntax = "proto3";
+
+package billing.v1;
+
+option java_multiple_files = true;
+option java_package = "com.logicvoid0x.billing.contracts.v1";
+option java_outer_classname = "ShardProto";
+
+service BudgetShard {
+  // All or nothing across the budgets in `holds`.
+  rpc Reserve(ReserveRequest) returns (ReserveResponse);
+  rpc Extend(ReserveRequest) returns (ReserveResponse);
+  // Settles at `actual` and releases the rest of the hold.
+  rpc Settle(SettleRequest) returns (SettleResponse);
+  rpc GrantLease(LeaseRequest) returns (LeaseGrant);
+  rpc Modes(ModesRequest) returns (ModeSnapshot);
+}
+
+message ReserveRequest {
+  string request_id = 1;
+  int32 sequence = 2;
+  string org_id = 3;
+  // budget_id -> amount to hold, in the budget's unit.
+  map<string, int64> holds = 4;
+}
+
+message ReserveResponse {
+  bool admitted = 1;
+  // Set when not admitted: "insufficient" | "denied" | "stale_epoch" | "unknown_budget".
+  string reason = 2;
+  // The budget that refused, when not admitted.
+  string refused_budget_id = 3;
+  int64 epoch = 4;
+}
+
+message SettleRequest {
+  string request_id = 1;
+  int32 sequence = 2;
+  string org_id = 3;
+  // budget_id -> actual amount spent, in the budget's unit.
+  map<string, int64> actual = 4;
+}
+
+message SettleResponse {
+  bool settled = 1;
+  // budget_id -> amount released back.
+  map<string, int64> released = 2;
+}
+
+message LeaseRequest {
+  string host_id = 1;
+  string budget_id = 2;
+  int64 requested = 3;
+  // Fencing token: requests with a stale epoch are rejected.
+  int64 epoch = 4;
+}
+
+message LeaseGrant {
+  int64 granted = 1;
+  int64 epoch = 2;
+  int64 ttl_millis = 3;
+  // "lease" | "direct" | "deny"
+  string mode = 4;
+}
+
+message ModesRequest {
+  string org_id = 1;
+}
+
+message ModeSnapshot {
+  string org_id = 1;
+  // budget_id -> "lease" | "direct" | "deny"
+  map<string, string> mode_by_budget = 2;
+  int64 version = 3;
+  int64 epoch = 4;
+}
