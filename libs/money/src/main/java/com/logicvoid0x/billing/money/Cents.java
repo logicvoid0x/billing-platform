@@ -82,6 +82,22 @@ public final class Cents {
   }
 
   /**
+   * {@code wholeCents + numerator / perUnits}, rounded half-even once as one number. Used where a
+   * total is built from parts that share one {@code perUnits} (graduated tiers), so the parts are
+   * summed exactly and rounded a single time.
+   *
+   * @param wholeCents cents already known exactly
+   * @param numerator the fractional remainder, in cents times {@code perUnits}, {@code >= 0}
+   * @param perUnits the denominator, {@code > 0}
+   */
+  public static long roundHalfEven(long wholeCents, long numerator, long perUnits) {
+    if (numerator < 0 || perUnits <= 0) {
+      throw new IllegalArgumentException("numerator must be >= 0 and perUnits > 0");
+    }
+    return addHalfEven(wholeCents, numerator, perUnits);
+  }
+
+  /**
    * {@code base + n / d} rounded half-even as one number, for {@code n >= 0} and {@code d > 0}: a
    * tie rounds to the even value of the sum.
    */

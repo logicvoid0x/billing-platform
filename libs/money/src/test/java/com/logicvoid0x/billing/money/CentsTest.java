@@ -39,6 +39,16 @@ class CentsTest {
   }
 
   @Test
+  void roundHalfEvenAddsARemainderOnceWithParityOfTheSum() {
+    assertThat(Cents.roundHalfEven(1, 1, 2)).isEqualTo(2); // 1.5 -> 2
+    assertThat(Cents.roundHalfEven(2, 1, 2)).isEqualTo(2); // 2.5 -> 2
+    assertThat(Cents.roundHalfEven(0, 7, 2)).isEqualTo(4); // 3.5 -> 4
+    assertThat(Cents.roundHalfEven(10, 0, 3)).isEqualTo(10);
+    assertThatThrownBy(() -> Cents.roundHalfEven(0, -1, 2))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
   void zeroUnitsCostNothing() {
     assertThat(Cents.forTotal(0, FIFTEEN_PER_MILLION)).isZero();
     assertThat(Cents.charge(0, 0, FIFTEEN_PER_MILLION)).isZero();
