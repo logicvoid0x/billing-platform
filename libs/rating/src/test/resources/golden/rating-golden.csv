@@ -1,0 +1,10 @@
+# Golden rating cases from docs/design.md, in integer cents. Never change an expected value
+# without a decision record.
+# case,org,sku,total_before,increments(;-separated),expected_cents
+acme_one_hour,org_acme,sku_out,0,40000000,48000
+acme_split_requests,org_acme,sku_out,0,10000000;5000000;24999999;1,48000
+list_price_without_contract,org_other,sku_out,0,40000000,60000
+tier_30m_at_990m,org_tier,sku_tiered,990000000,30000000,39000
+tier_30m_at_990m_split,org_tier,sku_tiered,990000000,7000000;3000000;20000000,39000
+tier_below_boundary,org_tier,sku_tiered,0,10000000,15000
+tier_above_boundary,org_tier,sku_tiered,1000000000,10000000,12000
