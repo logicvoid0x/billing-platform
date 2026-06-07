@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Services run from Gradle on the host and expose /actuator/prometheus.
+  - job_name: billing-services
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - host.docker.internal:8080  # gateway
+          - host.docker.internal:8082  # catalog
+          - host.docker.internal:8084  # balance-ledger
+          - host.docker.internal:8085  # payments
+          - host.docker.internal:8086  # usage-view
+
+  - job_name: flink
+    static_configs:
+      - targets: ["flink-jobmanager:9249"]

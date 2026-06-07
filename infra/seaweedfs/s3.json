@@ -1,0 +1,11 @@
+{
+  "identities": [
+    {
+      "name": "billing",
+      "credentials": [
+        { "accessKey": "billing", "secretKey": "billing-local-secret" }
+      ],
+      "actions": ["Admin", "Read", "List", "Tagging", "Write"]
+    }
+  ]
+}
