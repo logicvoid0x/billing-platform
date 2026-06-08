@@ -25,7 +25,7 @@ message SettleRecordEvent {
   int64 sequence = 9;
 }
 
-// Topic budget.changes, key = org_id. Idempotent on (budget_id, version).
+// Topic budget.changes (compacted), key = budget_id. Idempotent on (budget_id, version).
 message BudgetChange {
   string budget_id = 1;
   string org_id = 2;
