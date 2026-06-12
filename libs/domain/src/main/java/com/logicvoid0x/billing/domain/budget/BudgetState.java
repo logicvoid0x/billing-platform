@@ -1,6 +1,9 @@
 package com.logicvoid0x.billing.domain.budget;
 
 import com.logicvoid0x.billing.domain.Mode;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -245,5 +248,129 @@ public final class BudgetState {
     if (amount < 0) {
       throw new IllegalArgumentException("amounts must be >= 0");
     }
+  }
+
+  // ------------------------------------------------------------------ snapshots
+
+  private static final int SNAPSHOT_FORMAT = 1;
+  private static final byte RESERVE_RESULT = 1;
+  private static final byte SETTLE_RESULT = 2;
+
+  /**
+   * Writes the whole state, including the idempotency table, so a restored shard still recognizes
+   * replays. Maps are written in key order, so equal states give equal bytes.
+   */
+  public void writeTo(DataOutputStream out) throws IOException {
+    out.writeInt(SNAPSHOT_FORMAT);
+    out.writeLong(minHold);
+    out.writeLong(epoch);
+    out.writeInt(accounts.size());
+    for (Map.Entry<String, Account> e : accounts.entrySet()) {
+      Account a = e.getValue();
+      out.writeUTF(e.getKey());
+      out.writeUTF(a.orgId);
+      out.writeLong(a.capacity);
+      out.writeLong(a.spent);
+      out.writeLong(a.held);
+      out.writeLong(a.leased);
+    }
+    Map<String, Reservation> sortedReservations = new TreeMap<>(reservations);
+    out.writeInt(sortedReservations.size());
+    for (Map.Entry<String, Reservation> e : sortedReservations.entrySet()) {
+      out.writeUTF(e.getKey());
+      out.writeBoolean(e.getValue().settled);
+      writeAmounts(out, e.getValue().held);
+    }
+    Map<String, Map<String, Long>> sortedLeases = new TreeMap<>(leases);
+    out.writeInt(sortedLeases.size());
+    for (Map.Entry<String, Map<String, Long>> e : sortedLeases.entrySet()) {
+      out.writeUTF(e.getKey());
+      writeAmounts(out, e.getValue());
+    }
+    Map<String, Object[]> sortedApplied = new TreeMap<>(applied);
+    out.writeInt(sortedApplied.size());
+    for (Map.Entry<String, Object[]> e : sortedApplied.entrySet()) {
+      out.writeUTF(e.getKey());
+      @SuppressWarnings("unchecked")
+      Map<String, Long> payload = (Map<String, Long>) e.getValue()[0];
+      writeAmounts(out, payload);
+      Object result = e.getValue()[1];
+      if (result instanceof ReserveResult r) {
+        out.writeByte(RESERVE_RESULT);
+        out.writeBoolean(r.admitted());
+        out.writeUTF(r.reason().code());
+        out.writeUTF(r.refusedBudgetId());
+      } else if (result instanceof SettleResult s) {
+        out.writeByte(SETTLE_RESULT);
+        out.writeUTF(s.status().code());
+        writeAmounts(out, s.released());
+      } else {
+        throw new IllegalStateException("unexpected result type " + result);
+      }
+    }
+  }
+
+  /** Reads a state written by {@link #writeTo}. */
+  public static BudgetState readFrom(DataInputStream in) throws IOException {
+    int format = in.readInt();
+    if (format != SNAPSHOT_FORMAT) {
+      throw new IOException("unsupported snapshot format " + format);
+    }
+    BudgetState s = new BudgetState(in.readLong());
+    s.epoch = in.readLong();
+    for (int i = in.readInt(); i > 0; i--) {
+      String id = in.readUTF();
+      Account a = new Account(in.readUTF(), in.readLong());
+      a.spent = in.readLong();
+      a.held = in.readLong();
+      a.leased = in.readLong();
+      s.accounts.put(id, a);
+    }
+    for (int i = in.readInt(); i > 0; i--) {
+      String id = in.readUTF();
+      Reservation r = new Reservation();
+      r.settled = in.readBoolean();
+      r.held.putAll(readAmounts(in));
+      s.reservations.put(id, r);
+    }
+    for (int i = in.readInt(); i > 0; i--) {
+      String host = in.readUTF();
+      s.leases.put(host, new TreeMap<>(readAmounts(in)));
+    }
+    for (int i = in.readInt(); i > 0; i--) {
+      String key = in.readUTF();
+      Map<String, Long> payload = Map.copyOf(readAmounts(in));
+      byte type = in.readByte();
+      Object result;
+      if (type == RESERVE_RESULT) {
+        result =
+            new ReserveResult(
+                in.readBoolean(), ReserveResult.Reason.fromCode(in.readUTF()), in.readUTF());
+      } else if (type == SETTLE_RESULT) {
+        result = new SettleResult(SettleResult.Status.fromCode(in.readUTF()), readAmounts(in));
+      } else {
+        throw new IOException("unknown result type " + type);
+      }
+      s.applied.put(key, new Object[] {payload, result});
+    }
+    return s;
+  }
+
+  private static void writeAmounts(DataOutputStream out, Map<String, Long> amounts)
+      throws IOException {
+    Map<String, Long> sorted = new TreeMap<>(amounts);
+    out.writeInt(sorted.size());
+    for (Map.Entry<String, Long> e : sorted.entrySet()) {
+      out.writeUTF(e.getKey());
+      out.writeLong(e.getValue());
+    }
+  }
+
+  private static Map<String, Long> readAmounts(DataInputStream in) throws IOException {
+    Map<String, Long> m = new TreeMap<>();
+    for (int i = in.readInt(); i > 0; i--) {
+      m.put(in.readUTF(), in.readLong());
+    }
+    return m;
   }
 }

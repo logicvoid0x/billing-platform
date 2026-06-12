@@ -29,6 +29,16 @@ public record ReserveResult(boolean admitted, Reason reason, String refusedBudge
     public String code() {
       return code;
     }
+
+    /** Returns the reason with this code. */
+    public static Reason fromCode(String code) {
+      for (Reason r : values()) {
+        if (r.code.equals(code)) {
+          return r;
+        }
+      }
+      throw new IllegalArgumentException("unknown reason code: " + code);
+    }
   }
 
   static ReserveResult ok() {
