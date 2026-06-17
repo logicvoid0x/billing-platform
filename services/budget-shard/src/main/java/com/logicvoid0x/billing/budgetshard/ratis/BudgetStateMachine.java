@@ -120,6 +120,9 @@ public final class BudgetStateMachine extends BaseStateMachine {
   /** Applies one command; a deterministic rejection becomes an error result. */
   private byte[] apply(Command c) {
     try {
+      if (c.op() != ShardCodec.Op.QUERY_BALANCE && c.op() != ShardCodec.Op.QUERY_MODES) {
+        state.observeTime(c.atMillis()); // time comes from the log entry, never a local clock
+      }
       return switch (c.op()) {
         case OPEN -> {
           state.open(c.id(), c.other(), c.amount());
@@ -136,6 +139,10 @@ public final class BudgetStateMachine extends BaseStateMachine {
         case RESERVE -> ShardCodec.reserveResult(state.reserve(c.id(), c.sequence(), c.amounts()));
         case EXTEND -> ShardCodec.reserveResult(state.extend(c.id(), c.sequence(), c.amounts()));
         case SETTLE -> ShardCodec.settleResult(state.settle(c.id(), c.sequence(), c.amounts()));
+        case TICK -> {
+          state.tick(c.atMillis());
+          yield ShardCodec.empty();
+        }
         case GRANT_LEASE ->
             ShardCodec.leaseGrant(state.grantLease(c.id(), c.other(), c.amount(), c.epoch()));
         case QUERY_BALANCE -> ShardCodec.balance(state.balance(c.id()));

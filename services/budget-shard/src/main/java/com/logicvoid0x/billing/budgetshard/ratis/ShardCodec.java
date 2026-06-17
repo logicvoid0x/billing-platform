@@ -31,6 +31,7 @@ public final class ShardCodec {
     EXTEND(5),
     SETTLE(6),
     GRANT_LEASE(7),
+    TICK(8),
     QUERY_BALANCE(20),
     QUERY_MODES(21);
 
@@ -58,6 +59,7 @@ public final class ShardCodec {
       int sequence,
       long amount,
       long epoch,
+      long atMillis,
       Map<String, Long> amounts) {}
 
   static final byte OK = 0;
@@ -73,6 +75,7 @@ public final class ShardCodec {
       int sequence,
       long amount,
       long epoch,
+      long atMillis,
       Map<String, Long> amounts) {
     return write(out -> {
       out.writeByte(op.tag);
@@ -81,6 +84,7 @@ public final class ShardCodec {
       out.writeInt(sequence);
       out.writeLong(amount);
       out.writeLong(epoch);
+      out.writeLong(atMillis);
       writeAmounts(out, amounts);
     });
   }
@@ -95,6 +99,7 @@ public final class ShardCodec {
                 in.readUTF(),
                 in.readUTF(),
                 in.readInt(),
+                in.readLong(),
                 in.readLong(),
                 in.readLong(),
                 readAmounts(in)));

@@ -21,6 +21,8 @@ public final class BudgetState {
     long spent;
     long held;
     long leased;
+    Mode mode = Mode.DIRECT;
+    final BurnMeter burn = new BurnMeter(BURN_WINDOW_MILLIS, BURN_BUCKET_MILLIS);
 
     Account(String orgId, long capacity) {
       this.orgId = orgId;
@@ -28,13 +30,21 @@ public final class BudgetState {
     }
   }
 
+  /** Burn rate is measured over the last minute, in 10 s buckets. */
+  static final long BURN_WINDOW_MILLIS = 60_000;
+
+  static final long BURN_BUCKET_MILLIS = 10_000;
+
   private static final class Reservation {
     final Map<String, Long> held = new TreeMap<>();
     boolean settled;
   }
 
   private final long minHold;
+  private final ModePolicy policy;
   private long epoch;
+  // Latest time seen on a command (epoch millis); never read from a clock, so replicas agree.
+  private long nowMillis;
   private final Map<String, Account> accounts = new TreeMap<>();
   private final Map<String, Reservation> reservations = new HashMap<>();
   private final Map<String, Map<String, Long>> leases = new HashMap<>();
@@ -51,20 +61,41 @@ public final class BudgetState {
       throw new IllegalArgumentException("minHold must be > 0");
     }
     this.minHold = minHold;
+    this.policy = ModePolicy.standard(minHold);
+  }
+
+  /**
+   * Moves the state's notion of time forward to {@code atMillis} (the time stamped on the command
+   * being applied). Time never goes backwards; an older stamp is ignored.
+   */
+  public void observeTime(long atMillis) {
+    nowMillis = Math.max(nowMillis, atMillis);
+  }
+
+  /**
+   * Re-evaluates every budget's mode at {@code atMillis}, so idle burn decays out of the window.
+   */
+  public void tick(long atMillis) {
+    observeTime(atMillis);
+    accounts.values().forEach(this::reevaluate);
   }
 
   /** Opens a budget on this shard with {@code capacity}. */
   public void open(String budgetId, String orgId, long capacity) {
     requireNonNegative(capacity);
-    if (accounts.putIfAbsent(budgetId, new Account(orgId, capacity)) != null) {
+    Account a = new Account(orgId, capacity);
+    if (accounts.putIfAbsent(budgetId, a) != null) {
       throw new IllegalStateException("budget already open: " + budgetId);
     }
+    reevaluate(a);
   }
 
   /** Adds capacity (an escrow grant or a raised cap). */
   public void addCapacity(String budgetId, long delta) {
     requireNonNegative(delta);
-    account(budgetId).capacity = Math.addExact(account(budgetId).capacity, delta);
+    Account a = account(budgetId);
+    a.capacity = Math.addExact(a.capacity, delta);
+    reevaluate(a);
   }
 
   /** Moves to a newer epoch (a new Raft leader term); older epochs are fenced. */
@@ -153,7 +184,9 @@ public final class BudgetState {
             Account a = account(e.getKey());
             a.held -= e.getValue();
             a.spent = Math.addExact(a.spent, spend);
+            a.burn.record(spend, nowMillis);
             released.put(e.getKey(), Math.max(0, e.getValue() - spend));
+            reevaluate(a);
           }
           r.settled = true;
           return new SettleResult(SettleResult.Status.SETTLED, released);
@@ -171,18 +204,27 @@ public final class BudgetState {
     long granted = Math.max(0, Math.min(requested, available(a)));
     a.leased = Math.addExact(a.leased, granted);
     leases.computeIfAbsent(hostId, h -> new TreeMap<>()).merge(budgetId, granted, Math::addExact);
+    reevaluate(a);
     return new LeaseGrant(granted, epoch, false);
   }
 
-  /** See {@link BudgetStore#modes}: {@code DENY} below the smallest hold, else {@code DIRECT}. */
+  /**
+   * See {@link BudgetStore#modes}. A pure read of the stored modes, which {@link ModePolicy}
+   * re-evaluates on every write and {@link #tick}: {@code DENY} below the smallest hold, {@code
+   * LEASE} with enough runway (60 s / 120 s hysteresis), else {@code DIRECT}.
+   */
   public ModeSnapshot modes(String orgId) {
     Map<String, Mode> modes = new TreeMap<>();
     accounts.forEach((id, a) -> {
       if (a.orgId.equals(orgId)) {
-        modes.put(id, available(a) < minHold ? Mode.DENY : Mode.DIRECT);
+        modes.put(id, a.mode);
       }
     });
     return new ModeSnapshot(orgId, modes, epoch);
+  }
+
+  private void reevaluate(Account a) {
+    a.mode = policy.next(a.mode, available(a), a.burn.perSecond(nowMillis));
   }
 
   private ReserveResult checkHolds(Map<String, Long> holds) {
@@ -204,6 +246,7 @@ public final class BudgetState {
       Account a = account(budgetId);
       a.held = Math.addExact(a.held, amount);
       r.held.merge(budgetId, amount, Math::addExact);
+      reevaluate(a);
     });
   }
 
@@ -252,7 +295,7 @@ public final class BudgetState {
 
   // ------------------------------------------------------------------ snapshots
 
-  private static final int SNAPSHOT_FORMAT = 1;
+  private static final int SNAPSHOT_FORMAT = 2;
   private static final byte RESERVE_RESULT = 1;
   private static final byte SETTLE_RESULT = 2;
 
@@ -264,6 +307,7 @@ public final class BudgetState {
     out.writeInt(SNAPSHOT_FORMAT);
     out.writeLong(minHold);
     out.writeLong(epoch);
+    out.writeLong(nowMillis);
     out.writeInt(accounts.size());
     for (Map.Entry<String, Account> e : accounts.entrySet()) {
       Account a = e.getValue();
@@ -273,6 +317,13 @@ public final class BudgetState {
       out.writeLong(a.spent);
       out.writeLong(a.held);
       out.writeLong(a.leased);
+      out.writeUTF(a.mode.code());
+      Map<Long, Long> burn = a.burn.buckets();
+      out.writeInt(burn.size());
+      for (Map.Entry<Long, Long> b : burn.entrySet()) {
+        out.writeLong(b.getKey());
+        out.writeLong(b.getValue());
+      }
     }
     Map<String, Reservation> sortedReservations = new TreeMap<>(reservations);
     out.writeInt(sortedReservations.size());
@@ -318,12 +369,19 @@ public final class BudgetState {
     }
     BudgetState s = new BudgetState(in.readLong());
     s.epoch = in.readLong();
+    s.nowMillis = in.readLong();
     for (int i = in.readInt(); i > 0; i--) {
       String id = in.readUTF();
       Account a = new Account(in.readUTF(), in.readLong());
       a.spent = in.readLong();
       a.held = in.readLong();
       a.leased = in.readLong();
+      a.mode = Mode.fromCode(in.readUTF());
+      Map<Long, Long> burn = new TreeMap<>();
+      for (int j = in.readInt(); j > 0; j--) {
+        burn.put(in.readLong(), in.readLong());
+      }
+      a.burn.restore(burn);
       s.accounts.put(id, a);
     }
     for (int i = in.readInt(); i > 0; i--) {

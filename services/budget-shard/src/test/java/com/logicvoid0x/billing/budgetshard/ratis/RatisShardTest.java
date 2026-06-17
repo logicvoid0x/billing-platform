@@ -81,7 +81,8 @@ class RatisShardTest {
           .containsEntry(BALANCE, 180L);
       assertThat(store.grantLease("host-a", BALANCE, 100, 1).granted()).isEqualTo(100);
       assertThat(store.balance(BALANCE).available()).isEqualTo(1_000 - 120 - 100);
-      assertThat(store.modes("org_42").modeByBudget()).containsEntry(BALANCE, Mode.DIRECT);
+      // 120 cents settled in the last minute = 2 cents/s; 780 available = 390 s of runway.
+      assertThat(store.modes("org_42").modeByBudget()).containsEntry(BALANCE, Mode.LEASE);
       assertThatThrownBy(() -> store.reserve("req_1", 0, Map.of(BALANCE, 1L)))
           .as("a reused key with another payload is rejected deterministically")
           .isInstanceOf(IllegalArgumentException.class);

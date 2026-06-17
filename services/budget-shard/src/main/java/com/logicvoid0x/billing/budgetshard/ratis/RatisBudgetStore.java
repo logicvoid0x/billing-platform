@@ -9,76 +9,88 @@ import com.logicvoid0x.billing.domain.budget.ReserveResult;
 import com.logicvoid0x.billing.domain.budget.SettleResult;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.time.Clock;
 import java.util.Map;
+import java.util.Objects;
 import org.apache.ratis.client.RaftClient;
 import org.apache.ratis.protocol.Message;
 import org.apache.ratis.protocol.RaftClientReply;
 import org.apache.ratis.thirdparty.com.google.protobuf.ByteString;
 
-/** {@link BudgetStore} backed by a Ratis group: writes go through the Raft log. */
+/**
+ * {@link BudgetStore} backed by a Ratis group: writes go through the Raft log. Each command is
+ * stamped with this client's clock; the stamp is part of the log entry, so every replica applies
+ * the same time (and the state never moves time backwards).
+ */
 public final class RatisBudgetStore implements BudgetStore, AutoCloseable {
   private final RaftClient client;
+  private final Clock clock;
 
-  /** Wraps a client for the shard's Raft group. */
+  /** Wraps a client for the shard's Raft group, stamping commands with the UTC system clock. */
   public RatisBudgetStore(RaftClient client) {
-    this.client = client;
+    this(client, Clock.systemUTC());
+  }
+
+  /** Wraps a client for the shard's Raft group, stamping commands with {@code clock}. */
+  public RatisBudgetStore(RaftClient client, Clock clock) {
+    this.client = Objects.requireNonNull(client, "client");
+    this.clock = Objects.requireNonNull(clock, "clock");
   }
 
   /** Opens a budget with {@code capacity}. */
   public void open(String budgetId, String orgId, long capacity) {
-    ShardCodec.readEmpty(
-        write(ShardCodec.command(Op.OPEN, budgetId, orgId, 0, capacity, 0, Map.of())));
+    ShardCodec.readEmpty(write(Op.OPEN, budgetId, orgId, 0, capacity, 0, Map.of()));
   }
 
   /** Adds capacity to a budget. */
   public void addCapacity(String budgetId, long delta) {
-    ShardCodec.readEmpty(
-        write(ShardCodec.command(Op.ADD_CAPACITY, budgetId, "", 0, delta, 0, Map.of())));
+    ShardCodec.readEmpty(write(Op.ADD_CAPACITY, budgetId, "", 0, delta, 0, Map.of()));
   }
 
   /** Moves the shard to a newer epoch. */
   public void advanceEpoch(long epoch) {
-    ShardCodec.readEmpty(
-        write(ShardCodec.command(Op.ADVANCE_EPOCH, "", "", 0, epoch, 0, Map.of())));
+    ShardCodec.readEmpty(write(Op.ADVANCE_EPOCH, "", "", 0, epoch, 0, Map.of()));
+  }
+
+  /** Re-evaluates every mode at the current time (burn decays out of the window). */
+  public void tick() {
+    ShardCodec.readEmpty(write(Op.TICK, "", "", 0, 0, 0, Map.of()));
   }
 
   /** Reads one budget (linearizable read through the leader). */
   public BudgetBalance balance(String budgetId) {
-    return ShardCodec.readBalance(
-        read(ShardCodec.command(Op.QUERY_BALANCE, budgetId, "", 0, 0, 0, Map.of())));
+    return ShardCodec.readBalance(read(Op.QUERY_BALANCE, budgetId));
   }
 
   @Override
   public ReserveResult reserve(String requestId, int sequence, Map<String, Long> holds) {
-    return ShardCodec.readReserveResult(
-        write(ShardCodec.command(Op.RESERVE, requestId, "", sequence, 0, 0, holds)));
+    return ShardCodec.readReserveResult(write(Op.RESERVE, requestId, "", sequence, 0, 0, holds));
   }
 
   @Override
   public ReserveResult extend(String requestId, int sequence, Map<String, Long> holds) {
-    return ShardCodec.readReserveResult(
-        write(ShardCodec.command(Op.EXTEND, requestId, "", sequence, 0, 0, holds)));
+    return ShardCodec.readReserveResult(write(Op.EXTEND, requestId, "", sequence, 0, 0, holds));
   }
 
   @Override
   public SettleResult settle(String requestId, int sequence, Map<String, Long> actual) {
-    return ShardCodec.readSettleResult(
-        write(ShardCodec.command(Op.SETTLE, requestId, "", sequence, 0, 0, actual)));
+    return ShardCodec.readSettleResult(write(Op.SETTLE, requestId, "", sequence, 0, 0, actual));
   }
 
   @Override
   public LeaseGrant grantLease(String hostId, String budgetId, long requested, long epoch) {
     return ShardCodec.readLeaseGrant(
-        write(ShardCodec.command(Op.GRANT_LEASE, hostId, budgetId, 0, requested, epoch, Map.of())));
+        write(Op.GRANT_LEASE, hostId, budgetId, 0, requested, epoch, Map.of()));
   }
 
   @Override
   public ModeSnapshot modes(String orgId) {
-    return ShardCodec.readModes(
-        read(ShardCodec.command(Op.QUERY_MODES, orgId, "", 0, 0, 0, Map.of())));
+    return ShardCodec.readModes(read(Op.QUERY_MODES, orgId));
   }
 
-  private byte[] write(byte[] command) {
+  private byte[] write(
+      Op op, String id, String other, int sequence, long amount, long epoch, Map<String, Long> m) {
+    byte[] command = ShardCodec.command(op, id, other, sequence, amount, epoch, clock.millis(), m);
     try {
       return reply(client.io().send(Message.valueOf(ByteString.copyFrom(command))));
     } catch (IOException e) {
@@ -86,7 +98,8 @@ public final class RatisBudgetStore implements BudgetStore, AutoCloseable {
     }
   }
 
-  private byte[] read(byte[] query) {
+  private byte[] read(Op op, String id) {
+    byte[] query = ShardCodec.command(op, id, "", 0, 0, 0, 0, Map.of());
     try {
       return reply(client.io().sendReadOnly(Message.valueOf(ByteString.copyFrom(query))));
     } catch (IOException e) {
