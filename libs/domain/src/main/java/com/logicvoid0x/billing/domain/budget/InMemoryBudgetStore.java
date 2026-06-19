@@ -1,6 +1,7 @@
 package com.logicvoid0x.billing.domain.budget;
 
 import java.time.Clock;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -53,6 +54,11 @@ public final class InMemoryBudgetStore implements BudgetStore {
   /** Re-evaluates every mode at the current time. */
   public synchronized void tick() {
     state.tick(clock.millis());
+  }
+
+  /** Drains settled usage for the rollup window ending at {@code windowEndMillis}. */
+  public synchronized List<Rollup> rollup(String region, long windowEndMillis) {
+    return state.rollup(region, windowEndMillis);
   }
 
   /** Reads one budget. */

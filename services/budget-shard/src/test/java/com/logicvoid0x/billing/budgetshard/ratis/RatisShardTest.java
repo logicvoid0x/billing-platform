@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.logicvoid0x.billing.domain.Mode;
+import com.logicvoid0x.billing.domain.budget.Rollup;
 import com.logicvoid0x.billing.domain.budget.SettleResult;
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -83,6 +84,7 @@ class RatisShardTest {
       assertThat(store.balance(BALANCE).available()).isEqualTo(1_000 - 120 - 100);
       // 120 cents settled in the last minute = 2 cents/s; 780 available = 390 s of runway.
       assertThat(store.modes("org_42").modeByBudget()).containsEntry(BALANCE, Mode.LEASE);
+      assertThat(store.rollup("us-east", 5_000L)).extracting(Rollup::amount).containsExactly(120L);
       assertThatThrownBy(() -> store.reserve("req_1", 0, Map.of(BALANCE, 1L)))
           .as("a reused key with another payload is rejected deterministically")
           .isInstanceOf(IllegalArgumentException.class);
@@ -107,6 +109,11 @@ class RatisShardTest {
       assertThat(store.reserve("req_3", 0, Map.of(BALANCE, 50L)).admitted()).isTrue();
       assertThat(store.balance(BALANCE).held()).isEqualTo(50);
       assertThat(store.grantLease("host-a", BALANCE, 10, 0).staleEpoch()).isTrue();
+      assertThat(store.rollup("us-east", 5_000L))
+          .as("the last window replays after restart")
+          .extracting(Rollup::amount)
+          .containsExactly(120L);
+      assertThat(store.rollup("us-east", 10_000L)).as("nothing settled since").isEmpty();
     } finally {
       restarted.server().close();
     }

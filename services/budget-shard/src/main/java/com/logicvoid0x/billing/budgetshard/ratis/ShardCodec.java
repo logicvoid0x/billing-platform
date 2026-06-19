@@ -5,6 +5,7 @@ import com.logicvoid0x.billing.domain.budget.BudgetBalance;
 import com.logicvoid0x.billing.domain.budget.LeaseGrant;
 import com.logicvoid0x.billing.domain.budget.ModeSnapshot;
 import com.logicvoid0x.billing.domain.budget.ReserveResult;
+import com.logicvoid0x.billing.domain.budget.Rollup;
 import com.logicvoid0x.billing.domain.budget.SettleResult;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -12,6 +13,8 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -32,6 +35,7 @@ public final class ShardCodec {
     SETTLE(6),
     GRANT_LEASE(7),
     TICK(8),
+    ROLLUP(9),
     QUERY_BALANCE(20),
     QUERY_MODES(21);
 
@@ -215,6 +219,40 @@ public final class ShardCodec {
             modes.put(in.readUTF(), Mode.fromCode(in.readUTF()));
           }
           return new ModeSnapshot(orgId, modes, epoch);
+        });
+  }
+
+  static byte[] rollups(List<Rollup> rollups) {
+    return write(out -> {
+      out.writeByte(OK);
+      out.writeInt(rollups.size());
+      for (Rollup r : rollups) {
+        out.writeUTF(r.orgId());
+        out.writeUTF(r.budgetId());
+        out.writeUTF(r.region());
+        out.writeLong(r.amount());
+        out.writeLong(r.windowStartMillis());
+        out.writeLong(r.windowEndMillis());
+      }
+    });
+  }
+
+  static List<Rollup> readRollups(byte[] bytes) {
+    return read(
+        bytes,
+        in -> {
+          List<Rollup> out = new ArrayList<>();
+          for (int i = in.readInt(); i > 0; i--) {
+            out.add(
+                new Rollup(
+                    in.readUTF(),
+                    in.readUTF(),
+                    in.readUTF(),
+                    in.readLong(),
+                    in.readLong(),
+                    in.readLong()));
+          }
+          return List.copyOf(out);
         });
   }
 

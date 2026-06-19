@@ -139,6 +139,7 @@ public final class BudgetStateMachine extends BaseStateMachine {
         case RESERVE -> ShardCodec.reserveResult(state.reserve(c.id(), c.sequence(), c.amounts()));
         case EXTEND -> ShardCodec.reserveResult(state.extend(c.id(), c.sequence(), c.amounts()));
         case SETTLE -> ShardCodec.settleResult(state.settle(c.id(), c.sequence(), c.amounts()));
+        case ROLLUP -> ShardCodec.rollups(state.rollup(c.id(), c.amount()));
         case TICK -> {
           state.tick(c.atMillis());
           yield ShardCodec.empty();

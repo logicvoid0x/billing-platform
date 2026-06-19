@@ -6,10 +6,12 @@ import com.logicvoid0x.billing.domain.budget.BudgetStore;
 import com.logicvoid0x.billing.domain.budget.LeaseGrant;
 import com.logicvoid0x.billing.domain.budget.ModeSnapshot;
 import com.logicvoid0x.billing.domain.budget.ReserveResult;
+import com.logicvoid0x.billing.domain.budget.Rollup;
 import com.logicvoid0x.billing.domain.budget.SettleResult;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.time.Clock;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import org.apache.ratis.client.RaftClient;
@@ -55,6 +57,14 @@ public final class RatisBudgetStore implements BudgetStore, AutoCloseable {
   /** Re-evaluates every mode at the current time (burn decays out of the window). */
   public void tick() {
     ShardCodec.readEmpty(write(Op.TICK, "", "", 0, 0, 0, Map.of()));
+  }
+
+  /**
+   * Drains settled usage for the rollup window ending at {@code windowEndMillis}, through the log;
+   * the same window end replays the same rollups.
+   */
+  public List<Rollup> rollup(String region, long windowEndMillis) {
+    return ShardCodec.readRollups(write(Op.ROLLUP, region, "", 0, windowEndMillis, 0, Map.of()));
   }
 
   /** Reads one budget (linearizable read through the leader). */

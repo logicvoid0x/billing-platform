@@ -4,7 +4,9 @@ import com.logicvoid0x.billing.domain.Mode;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
@@ -21,6 +23,8 @@ public final class BudgetState {
     long spent;
     long held;
     long leased;
+    // Settled usage not yet sent to the home ledger (negative after a downward correction).
+    long unrolled;
     Mode mode = Mode.DIRECT;
     final BurnMeter burn = new BurnMeter(BURN_WINDOW_MILLIS, BURN_BUCKET_MILLIS);
 
@@ -37,30 +41,50 @@ public final class BudgetState {
 
   private static final class Reservation {
     final Map<String, Long> held = new TreeMap<>();
+    long openedAtMillis;
     boolean settled;
+    // Settled by tick at the held amount; the first real settle afterwards corrects it.
+    boolean autoSettled;
   }
 
+  /** Default max request duration (10 min) plus grace (1 min) before a hold auto-settles. */
+  public static final long DEFAULT_MAX_HOLD_MILLIS = 660_000;
+
   private final long minHold;
+  private final long maxHoldMillis;
   private final ModePolicy policy;
   private long epoch;
   // Latest time seen on a command (epoch millis); never read from a clock, so replicas agree.
   private long nowMillis;
   private final Map<String, Account> accounts = new TreeMap<>();
-  private final Map<String, Reservation> reservations = new HashMap<>();
+  private final Map<String, Reservation> reservations = new TreeMap<>();
   private final Map<String, Map<String, Long>> leases = new HashMap<>();
   // requestId:sequence -> (payload, result): replays return the first result.
   private final Map<String, Object[]> applied = new HashMap<>();
+  private long lastRollupEndMillis;
+  private List<Rollup> lastRollup = List.of();
+
+  /**
+   * Creates an empty state with the default auto-settle delay.
+   *
+   * @param minHold the smallest possible hold; below it a budget is in {@code DENY}
+   */
+  public BudgetState(long minHold) {
+    this(minHold, DEFAULT_MAX_HOLD_MILLIS);
+  }
 
   /**
    * Creates an empty state.
    *
    * @param minHold the smallest possible hold; below it a budget is in {@code DENY}
+   * @param maxHoldMillis max request duration plus grace; older holds auto-settle on tick
    */
-  public BudgetState(long minHold) {
-    if (minHold <= 0) {
-      throw new IllegalArgumentException("minHold must be > 0");
+  public BudgetState(long minHold, long maxHoldMillis) {
+    if (minHold <= 0 || maxHoldMillis <= 0) {
+      throw new IllegalArgumentException("minHold and maxHoldMillis must be > 0");
     }
     this.minHold = minHold;
+    this.maxHoldMillis = maxHoldMillis;
     this.policy = ModePolicy.standard(minHold);
   }
 
@@ -73,11 +97,62 @@ public final class BudgetState {
   }
 
   /**
-   * Re-evaluates every budget's mode at {@code atMillis}, so idle burn decays out of the window.
+   * Periodic maintenance at {@code atMillis}: auto-settles holds open for at least the max hold
+   * time at their held amount (the gateway that held them is presumed gone), then re-evaluates
+   * every budget's mode so idle burn decays out of the window.
    */
   public void tick(long atMillis) {
     observeTime(atMillis);
+    for (Reservation r : reservations.values()) {
+      if (!r.settled && nowMillis - r.openedAtMillis >= maxHoldMillis) {
+        r.held.forEach((budgetId, amount) -> {
+          Account a = account(budgetId);
+          a.held -= amount;
+          charge(a, amount);
+        });
+        r.settled = true;
+        r.autoSettled = true;
+      }
+    }
     accounts.values().forEach(this::reevaluate);
+  }
+
+  /**
+   * Drains settled usage per budget for the rollup window ending at {@code windowEndMillis}.
+   * Idempotent on the window: the same window end returns the same rollups again, and an older one
+   * returns nothing.
+   *
+   * @param region this shard's region, part of each rollup's idempotency key
+   * @param windowEndMillis end of the window, epoch millis (typically every 5 s)
+   */
+  public List<Rollup> rollup(String region, long windowEndMillis) {
+    Objects.requireNonNull(region, "region");
+    if (windowEndMillis == lastRollupEndMillis) {
+      return lastRollup;
+    }
+    if (windowEndMillis < lastRollupEndMillis) {
+      return List.of();
+    }
+    List<Rollup> out = new ArrayList<>();
+    accounts.forEach((budgetId, a) -> {
+      if (a.unrolled != 0) {
+        out.add(
+            new Rollup(
+                a.orgId, budgetId, region, a.unrolled, lastRollupEndMillis, windowEndMillis));
+        a.unrolled = 0;
+      }
+    });
+    lastRollupEndMillis = windowEndMillis;
+    lastRollup = List.copyOf(out);
+    return lastRollup;
+  }
+
+  private void charge(Account a, long amount) {
+    a.spent = Math.addExact(a.spent, amount);
+    a.unrolled = Math.addExact(a.unrolled, amount);
+    if (amount > 0) {
+      a.burn.record(amount, nowMillis);
+    }
   }
 
   /** Opens a budget on this shard with {@code capacity}. */
@@ -131,6 +206,7 @@ public final class BudgetState {
           ReserveResult check = checkHolds(holds);
           if (check.admitted()) {
             Reservation r = new Reservation();
+            r.openedAtMillis = nowMillis;
             applyHolds(r, holds);
             reservations.put(requestId, r);
           }
@@ -170,7 +246,7 @@ public final class BudgetState {
           if (r == null) {
             return new SettleResult(SettleResult.Status.NO_RESERVATION, Map.of());
           }
-          if (r.settled) {
+          if (r.settled && !r.autoSettled) {
             return new SettleResult(SettleResult.Status.ALREADY_SETTLED, Map.of());
           }
           for (String budgetId : actual.keySet()) {
@@ -182,13 +258,18 @@ public final class BudgetState {
           for (Map.Entry<String, Long> e : r.held.entrySet()) {
             long spend = actual.getOrDefault(e.getKey(), 0L);
             Account a = account(e.getKey());
-            a.held -= e.getValue();
-            a.spent = Math.addExact(a.spent, spend);
-            a.burn.record(spend, nowMillis);
+            if (r.autoSettled) {
+              // Already charged at the held amount: post only the difference.
+              charge(a, spend - e.getValue());
+            } else {
+              a.held -= e.getValue();
+              charge(a, spend);
+            }
             released.put(e.getKey(), Math.max(0, e.getValue() - spend));
             reevaluate(a);
           }
           r.settled = true;
+          r.autoSettled = false;
           return new SettleResult(SettleResult.Status.SETTLED, released);
         });
   }
@@ -295,7 +376,7 @@ public final class BudgetState {
 
   // ------------------------------------------------------------------ snapshots
 
-  private static final int SNAPSHOT_FORMAT = 2;
+  private static final int SNAPSHOT_FORMAT = 3;
   private static final byte RESERVE_RESULT = 1;
   private static final byte SETTLE_RESULT = 2;
 
@@ -306,6 +387,7 @@ public final class BudgetState {
   public void writeTo(DataOutputStream out) throws IOException {
     out.writeInt(SNAPSHOT_FORMAT);
     out.writeLong(minHold);
+    out.writeLong(maxHoldMillis);
     out.writeLong(epoch);
     out.writeLong(nowMillis);
     out.writeInt(accounts.size());
@@ -317,6 +399,7 @@ public final class BudgetState {
       out.writeLong(a.spent);
       out.writeLong(a.held);
       out.writeLong(a.leased);
+      out.writeLong(a.unrolled);
       out.writeUTF(a.mode.code());
       Map<Long, Long> burn = a.burn.buckets();
       out.writeInt(burn.size());
@@ -330,6 +413,8 @@ public final class BudgetState {
     for (Map.Entry<String, Reservation> e : sortedReservations.entrySet()) {
       out.writeUTF(e.getKey());
       out.writeBoolean(e.getValue().settled);
+      out.writeBoolean(e.getValue().autoSettled);
+      out.writeLong(e.getValue().openedAtMillis);
       writeAmounts(out, e.getValue().held);
     }
     Map<String, Map<String, Long>> sortedLeases = new TreeMap<>(leases);
@@ -359,6 +444,16 @@ public final class BudgetState {
         throw new IllegalStateException("unexpected result type " + result);
       }
     }
+    out.writeLong(lastRollupEndMillis);
+    out.writeInt(lastRollup.size());
+    for (Rollup r : lastRollup) {
+      out.writeUTF(r.orgId());
+      out.writeUTF(r.budgetId());
+      out.writeUTF(r.region());
+      out.writeLong(r.amount());
+      out.writeLong(r.windowStartMillis());
+      out.writeLong(r.windowEndMillis());
+    }
   }
 
   /** Reads a state written by {@link #writeTo}. */
@@ -367,7 +462,7 @@ public final class BudgetState {
     if (format != SNAPSHOT_FORMAT) {
       throw new IOException("unsupported snapshot format " + format);
     }
-    BudgetState s = new BudgetState(in.readLong());
+    BudgetState s = new BudgetState(in.readLong(), in.readLong());
     s.epoch = in.readLong();
     s.nowMillis = in.readLong();
     for (int i = in.readInt(); i > 0; i--) {
@@ -376,6 +471,7 @@ public final class BudgetState {
       a.spent = in.readLong();
       a.held = in.readLong();
       a.leased = in.readLong();
+      a.unrolled = in.readLong();
       a.mode = Mode.fromCode(in.readUTF());
       Map<Long, Long> burn = new TreeMap<>();
       for (int j = in.readInt(); j > 0; j--) {
@@ -388,6 +484,8 @@ public final class BudgetState {
       String id = in.readUTF();
       Reservation r = new Reservation();
       r.settled = in.readBoolean();
+      r.autoSettled = in.readBoolean();
+      r.openedAtMillis = in.readLong();
       r.held.putAll(readAmounts(in));
       s.reservations.put(id, r);
     }
@@ -411,6 +509,19 @@ public final class BudgetState {
       }
       s.applied.put(key, new Object[] {payload, result});
     }
+    s.lastRollupEndMillis = in.readLong();
+    List<Rollup> rollups = new ArrayList<>();
+    for (int i = in.readInt(); i > 0; i--) {
+      rollups.add(
+          new Rollup(
+              in.readUTF(),
+              in.readUTF(),
+              in.readUTF(),
+              in.readLong(),
+              in.readLong(),
+              in.readLong()));
+    }
+    s.lastRollup = List.copyOf(rollups);
     return s;
   }
 
