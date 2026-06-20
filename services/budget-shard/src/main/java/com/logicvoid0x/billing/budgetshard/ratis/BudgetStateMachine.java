@@ -154,6 +154,18 @@ public final class BudgetStateMachine extends BaseStateMachine {
     }
   }
 
+  /** Reads one budget on this replica (for tests and diagnostics; may lag the leader). */
+  public synchronized com.logicvoid0x.billing.domain.budget.BudgetBalance localBalance(
+      String budgetId) {
+    return state.balance(budgetId);
+  }
+
+  /** Index of the last log entry applied on this replica, or -1 before any. */
+  public synchronized long lastAppliedIndex() {
+    TermIndex t = getLastAppliedTermIndex();
+    return t == null ? -1 : t.getIndex();
+  }
+
   /** The smallest possible hold this machine was created with. */
   public long minHold() {
     return minHold;
