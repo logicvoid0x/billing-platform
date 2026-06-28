@@ -61,6 +61,12 @@ public final class InMemoryBudgetStore implements BudgetStore {
     return state.rollup(region, windowEndMillis);
   }
 
+  /** Corrects a counter by {@code delta}, once per {@code key}; false for a replay. */
+  public synchronized boolean adjust(String budgetId, long delta, String key) {
+    now();
+    return state.adjust(budgetId, delta, key);
+  }
+
   /** Reads one budget. */
   public synchronized BudgetBalance balance(String budgetId) {
     return state.balance(budgetId);

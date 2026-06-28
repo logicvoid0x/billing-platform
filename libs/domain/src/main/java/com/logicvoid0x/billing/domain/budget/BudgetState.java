@@ -63,6 +63,8 @@ public final class BudgetState {
   private final Map<String, Object[]> applied = new HashMap<>();
   private long lastRollupEndMillis;
   private List<Rollup> lastRollup = List.of();
+  // adjustment key -> delta: corrections are applied once per key.
+  private final Map<String, Long> adjustments = new TreeMap<>();
 
   /**
    * Creates an empty state with the default auto-settle delay.
@@ -274,6 +276,30 @@ public final class BudgetState {
         });
   }
 
+  /**
+   * Corrects a budget's counter by {@code delta} (positive or negative), e.g. allowance drift found
+   * by reconciliation. Idempotent on {@code key}: a replay is a no-op, and a key reused with
+   * another delta is rejected. Corrections are new entries; nothing is overwritten.
+   *
+   * @return whether the adjustment was applied now (false for a replay)
+   */
+  public boolean adjust(String budgetId, long delta, String key) {
+    Objects.requireNonNull(key, "key");
+    Account a = account(budgetId);
+    Long seen = adjustments.get(key);
+    if (seen != null) {
+      if (seen != delta) {
+        throw new IllegalArgumentException("adjustment key reused with another delta: " + key);
+      }
+      return false;
+    }
+    adjustments.put(key, delta);
+    a.spent = Math.addExact(a.spent, delta);
+    a.unrolled = Math.addExact(a.unrolled, delta);
+    reevaluate(a);
+    return true;
+  }
+
   /** See {@link BudgetStore#grantLease}. */
   public LeaseGrant grantLease(String hostId, String budgetId, long requested, long requestEpoch) {
     Objects.requireNonNull(hostId, "hostId");
@@ -376,7 +402,7 @@ public final class BudgetState {
 
   // ------------------------------------------------------------------ snapshots
 
-  private static final int SNAPSHOT_FORMAT = 3;
+  private static final int SNAPSHOT_FORMAT = 4;
   private static final byte RESERVE_RESULT = 1;
   private static final byte SETTLE_RESULT = 2;
 
@@ -444,6 +470,7 @@ public final class BudgetState {
         throw new IllegalStateException("unexpected result type " + result);
       }
     }
+    writeAmounts(out, adjustments);
     out.writeLong(lastRollupEndMillis);
     out.writeInt(lastRollup.size());
     for (Rollup r : lastRollup) {
@@ -509,6 +536,7 @@ public final class BudgetState {
       }
       s.applied.put(key, new Object[] {payload, result});
     }
+    s.adjustments.putAll(readAmounts(in));
     s.lastRollupEndMillis = in.readLong();
     List<Rollup> rollups = new ArrayList<>();
     for (int i = in.readInt(); i > 0; i--) {

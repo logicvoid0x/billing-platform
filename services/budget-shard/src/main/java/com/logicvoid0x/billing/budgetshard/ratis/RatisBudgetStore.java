@@ -67,6 +67,11 @@ public final class RatisBudgetStore implements BudgetStore, AutoCloseable {
     return ShardCodec.readRollups(write(Op.ROLLUP, region, "", 0, windowEndMillis, 0, Map.of()));
   }
 
+  /** Corrects a counter by {@code delta} through the log, once per {@code key}. */
+  public boolean adjust(String budgetId, long delta, String key) {
+    return ShardCodec.readBool(write(Op.ADJUST, budgetId, key, 0, delta, 0, Map.of()));
+  }
+
   /** Reads one budget (linearizable read through the leader). */
   public BudgetBalance balance(String budgetId) {
     return ShardCodec.readBalance(read(Op.QUERY_BALANCE, budgetId));

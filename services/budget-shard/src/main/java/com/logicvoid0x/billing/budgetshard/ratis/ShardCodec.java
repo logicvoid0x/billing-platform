@@ -36,6 +36,7 @@ public final class ShardCodec {
     GRANT_LEASE(7),
     TICK(8),
     ROLLUP(9),
+    ADJUST(10),
     QUERY_BALANCE(20),
     QUERY_MODES(21);
 
@@ -116,6 +117,17 @@ public final class ShardCodec {
       out.writeByte(ERROR);
       out.writeUTF(message == null ? "error" : message);
     });
+  }
+
+  static byte[] bool(boolean b) {
+    return write(out -> {
+      out.writeByte(OK);
+      out.writeBoolean(b);
+    });
+  }
+
+  static boolean readBool(byte[] bytes) {
+    return read(bytes, in -> in.readBoolean());
   }
 
   static byte[] empty() {
