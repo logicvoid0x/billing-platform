@@ -7,6 +7,8 @@
 #
 # Runs kafka-topics.sh from $KAFKA_HOME if set, otherwise inside the compose broker container.
 set -euo pipefail
+# Git Bash on Windows rewrites absolute container paths (/opt/...) passed to docker; stop that.
+export MSYS_NO_PATHCONV=1
 
 here="$(cd "$(dirname "$0")" && pwd)"
 compose_file="$here/../docker-compose.yml"

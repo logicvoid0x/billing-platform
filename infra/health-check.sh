@@ -5,7 +5,8 @@
 set -uo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
-compose=(docker compose -f "$here/docker-compose.yml")
+# MSYS_NO_PATHCONV: Git Bash on Windows would rewrite container paths (/opt/...) given to docker.
+compose=(env MSYS_NO_PATHCONV=1 docker compose -f "$here/docker-compose.yml")
 failures=0
 
 check() {
@@ -29,7 +30,7 @@ kafka_topics() {
 
 has_all_topics() {
   local listed
-  listed=$(kafka_topics) || return 1
+  listed=$(kafka_topics | tr -d '\r') || return 1
   for t in usage.raw usage.control usage.dlq usage.corrections budget.settle budget.changes gateway.log; do
     grep -qx "$t" <<<"$listed" || { echo "missing topic $t"; return 1; }
   done
@@ -39,7 +40,7 @@ postgres_schemas() {
   "${compose[@]}" exec -T postgres psql -U billing -d billing -tAc \
     "select count(*) from information_schema.schemata where schema_name in
      ('catalog','metering','rating','balance_ledger','budget_shard','reconciliation','invoicing','payments','usage_view')" |
-    grep -qx 9
+    tr -d '\r' | grep -qx 9
 }
 
 flink_has_taskmanager() {

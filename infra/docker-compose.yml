@@ -93,14 +93,14 @@ services:
   # SeaweedFS replaces MinIO, whose community images are no longer published.
   seaweedfs:
     image: chrislusf/seaweedfs:4.51
-    command: server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json
+    command: server -ip.bind=0.0.0.0 -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json
     ports:
       - "8333:8333"
     volumes:
       - ./seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
       - seaweedfs-data:/data
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9333/cluster/status"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9333/cluster/status"]
       interval: 5s
       timeout: 5s
       retries: 30
