@@ -4,3 +4,17 @@ spring:
   threads:
     virtual:
       enabled: true
+  datasource:
+    # Local defaults match infra/docker-compose.yml; override with SPRING_DATASOURCE_* in deployments.
+    url: jdbc:postgresql://localhost:5432/billing
+    username: billing
+    password: billing
+
+server:
+  port: 8090
+
+catalog:
+  cache:
+    version-check-every: 30s
+    max-hours: 2048
+  rating-code-version: rating-1

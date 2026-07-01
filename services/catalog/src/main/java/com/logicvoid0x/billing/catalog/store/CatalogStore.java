@@ -1,5 +1,6 @@
 package com.logicvoid0x.billing.catalog.store;
 
+import com.logicvoid0x.billing.catalog.launch.ModelOffering;
 import com.logicvoid0x.billing.domain.MeterCode;
 import com.logicvoid0x.billing.money.Cents.Rate;
 import com.logicvoid0x.billing.rating.ContextBandRule;
@@ -542,6 +543,42 @@ public final class CatalogStore {
             }
           }
         });
+  }
+
+  /** Registers that a model emits a meter in a service tier. Idempotent; rows are never removed. */
+  public boolean addOffering(ModelOffering offering) {
+    return write(
+        "model offering " + offering,
+        c -> {
+          try (PreparedStatement s =
+              c.prepareStatement(
+                  "INSERT INTO catalog.model_offering (model, service_tier, meter_code)"
+                      + " VALUES (?, ?, ?) ON CONFLICT DO NOTHING")) {
+            s.setString(1, offering.model());
+            s.setString(2, offering.serviceTier());
+            s.setString(3, offering.meter().code());
+            return s.executeUpdate() == 1;
+          }
+        });
+  }
+
+  /** The model registry, ordered by model, tier and meter. */
+  public List<ModelOffering> offerings() {
+    List<ModelOffering> out = new ArrayList<>();
+    try (Connection c = dataSource.getConnection();
+        PreparedStatement s =
+            c.prepareStatement(
+                "SELECT model, service_tier, meter_code FROM catalog.model_offering"
+                    + " ORDER BY model, service_tier, meter_code");
+        ResultSet rs = s.executeQuery()) {
+      while (rs.next()) {
+        out.add(
+            new ModelOffering(rs.getString(1), rs.getString(2), new MeterCode(rs.getString(3))));
+      }
+    } catch (SQLException e) {
+      throw new CatalogException("reading the model registry failed", e);
+    }
+    return out;
   }
 
   /** Writes every row of {@code catalog} (idempotent); list and contract rows get version 1. */

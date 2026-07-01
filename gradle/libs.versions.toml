@@ -72,6 +72,7 @@ testcontainers-kafka = { module = "org.testcontainers:testcontainers-kafka" }
 testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql" }
 testcontainers-toxiproxy = { module = "org.testcontainers:testcontainers-toxiproxy" }
 jmh-core = { module = "org.openjdk.jmh:jmh-core", version.ref = "jmh" }
+spring-boot-starter-jdbc = { module = "org.springframework.boot:spring-boot-starter-jdbc" }
 spring-boot-starter-webmvc = { module = "org.springframework.boot:spring-boot-starter-webmvc" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
 errorprone-core = { module = "com.google.errorprone:error_prone_core", version.ref = "errorprone" }
