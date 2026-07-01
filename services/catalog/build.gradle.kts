@@ -11,4 +11,5 @@ dependencies {
     testImplementation(libs.testcontainers.postgresql)
     testImplementation(libs.postgresql)
     testImplementation(testFixtures(project(":libs:money")))
+    testImplementation(testFixtures(project(":libs:rating")))
 }

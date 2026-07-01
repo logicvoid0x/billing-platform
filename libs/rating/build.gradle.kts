@@ -1,4 +1,7 @@
-plugins { id("billing.java-library-17") }
+plugins {
+    id("billing.java-library-17")
+    `java-test-fixtures`
+}
 
 dependencies {
     api(project(":libs:money"))
@@ -6,3 +9,4 @@ dependencies {
 }
 
 dependencies { testImplementation(testFixtures(project(":libs:money"))) }
+
