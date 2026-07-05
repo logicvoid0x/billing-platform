@@ -16,7 +16,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = "inference-sim.chunk-delay=20ms")
+    properties = {"inference-sim.chunk-delay=20ms", "usage.emitter.enabled=false"})
 class SimulatorHttpTest {
   @LocalServerPort int port;
   private final HttpClient http = HttpClient.newHttpClient();

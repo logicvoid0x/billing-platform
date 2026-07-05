@@ -4,3 +4,9 @@ spring:
   threads:
     virtual:
       enabled: true
+
+usage:
+  emitter:
+    enabled: true
+    # Host listener of the compose broker; set per deployment.
+    bootstrap-servers: localhost:19092

@@ -1,5 +1,6 @@
 package com.logicvoid0x.billing.inferencesim;
 
+import com.logicvoid0x.billing.inferencesim.emitter.UsageSink;
 import java.io.IOException;
 import java.time.Clock;
 import java.time.Duration;
@@ -26,6 +27,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public class SimulatorController implements AutoCloseable {
   private final InferenceSimulator simulator;
   private final int chunkTokens;
+  private final UsageSink usageSink;
   private final Map<String, StopSignal> active = new ConcurrentHashMap<>();
   private final ExecutorService streams = Executors.newVirtualThreadPerTaskExecutor();
 
@@ -33,9 +35,11 @@ public class SimulatorController implements AutoCloseable {
   public SimulatorController(
       @Value("${inference-sim.host-id:sim-host-1}") String hostId,
       @Value("${inference-sim.chunk-tokens:512}") int chunkTokens,
-      @Value("${inference-sim.chunk-delay:0ms}") Duration chunkDelay) {
+      @Value("${inference-sim.chunk-delay:0ms}") Duration chunkDelay,
+      UsageSink usageSink) {
     this.simulator = new InferenceSimulator(hostId, Clock.systemUTC(), chunkDelay);
     this.chunkTokens = chunkTokens;
+    this.usageSink = usageSink;
   }
 
   /** Starts a request and streams its output. */
@@ -65,6 +69,8 @@ public class SimulatorController implements AutoCloseable {
                             chunk.tokens(),
                             "text",
                             chunk.text())));
+        // Only the attempt that delivered output emits usage, under the original request ID.
+        result.usageIfDelivered().ifPresent(usageSink::emit);
         send(emitter, stop, "result", result.toJson());
         emitter.complete();
       } catch (RuntimeException e) {
