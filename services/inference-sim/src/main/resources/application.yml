@@ -14,6 +14,9 @@ usage:
     dir: data/usage-spool
     drain-every: 5s
     drain-batch: 500
+  control:
+    spool-dir: data/control-spool
+    publish-every: 1m
 
 management:
   endpoints:

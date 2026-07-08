@@ -1,6 +1,5 @@
 package com.logicvoid0x.billing.inferencesim.emitter;
 
-import com.logicvoid0x.billing.domain.RequestUsage;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -13,46 +12,55 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Function;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The host's usage sink: Kafka first, the disk spool when Kafka fails (design: "If Kafka is down it
- * spools to disk; inference never waits on billing").
+ * Sends keyed records to one Kafka topic, with a disk spool when Kafka fails (design: "If Kafka is
+ * down it spools to disk; inference never waits on billing"). The host has one for usage and a
+ * separate one for control totals.
  *
  * <ul>
- *   <li>{@link #emit} only enqueues; one background thread delivers, so inference never waits.
- *   <li>While the spool holds anything, new usage is appended behind it rather than overtaking it;
- *       the spool drains in append order.
+ *   <li>{@link #send} only enqueues; one background thread delivers, so inference never waits.
+ *   <li>While the spool holds anything, new records are appended behind it rather than overtaking
+ *       it; the spool drains in append order.
  *   <li>A send that fails after every producer retry is appended to the spool when its failure is
- *       known, so it can land behind usage produced after it. Order across a failure is not kept
- *       and is not needed: aggregation is by event time and deduplicated on requestId:meterCode.
+ *       known, so it can land behind records sent after it. Order across a failure is not kept and
+ *       is not needed: aggregation is by event time and deduplicated on requestId:meterCode.
  *   <li>{@link #drain} re-sends spooled records in order and advances the spool only past the
  *       contiguous prefix the broker acknowledged.
  * </ul>
  */
-public final class SpoolingUsageSink implements UsageSink, AutoCloseable {
-  private static final Logger log = LoggerFactory.getLogger(SpoolingUsageSink.class);
+public final class SpoolingSender implements AutoCloseable {
+  private static final Logger log = LoggerFactory.getLogger(SpoolingSender.class);
 
   private final UsageEmitter emitter;
   private final UsageSpool spool;
+  private final Function<byte[], String> keyOf;
   private final int drainBatch;
   private final Duration ackWait;
   private final ExecutorService delivery =
-      Executors.newSingleThreadExecutor(Thread.ofPlatform().name("usage-delivery").factory());
+      Executors.newSingleThreadExecutor(Thread.ofPlatform().name("spool-delivery").factory());
   private final ReentrantLock drainLock = new ReentrantLock();
 
   /**
-   * Creates the sink.
+   * Creates the sender.
    *
    * @param emitter the Kafka emitter
    * @param spool the disk spool
+   * @param keyOf the record key of a spooled payload (used when draining)
    * @param drainBatch most records re-sent per drain round
    * @param ackWait how long a drain waits for one record's acknowledgement
    */
-  public SpoolingUsageSink(
-      UsageEmitter emitter, UsageSpool spool, int drainBatch, Duration ackWait) {
+  public SpoolingSender(
+      UsageEmitter emitter,
+      UsageSpool spool,
+      Function<byte[], String> keyOf,
+      int drainBatch,
+      Duration ackWait) {
+    this.keyOf = Objects.requireNonNull(keyOf, "keyOf");
     this.emitter = Objects.requireNonNull(emitter, "emitter");
     this.spool = Objects.requireNonNull(spool, "spool");
     this.ackWait = Objects.requireNonNull(ackWait, "ackWait");
@@ -62,10 +70,10 @@ public final class SpoolingUsageSink implements UsageSink, AutoCloseable {
     this.drainBatch = drainBatch;
   }
 
-  @Override
-  public void emit(RequestUsage usage) {
-    byte[] encoded = UsageEventCodec.encode(usage);
-    String key = usage.orgId();
+  /** Hands off one record; it is sent, or spooled if sending fails. Never blocks. */
+  public void send(String key, byte[] encoded) {
+    Objects.requireNonNull(key, "key");
+    Objects.requireNonNull(encoded, "encoded");
     delivery.execute(() -> deliver(key, encoded));
   }
 
@@ -79,7 +87,7 @@ public final class SpoolingUsageSink implements UsageSink, AutoCloseable {
             .send(key, encoded)
             .whenComplete((metadata, error) -> {
               if (error != null) {
-                log.warn("usage send failed after every retry; spooling it: {}", error.toString());
+                log.warn("send failed after every retry; spooling it: {}", error.toString());
                 spoolLater(encoded);
               }
             });
@@ -112,7 +120,7 @@ public final class SpoolingUsageSink implements UsageSink, AutoCloseable {
         }
         List<CompletableFuture<RecordMetadata>> sends = new ArrayList<>(batch.size());
         for (UsageSpool.Entry e : batch) {
-          sends.add(emitter.send(UsageEventCodec.decode(e.payload()).orgId(), e.payload()));
+          sends.add(emitter.send(keyOf.apply(e.payload()), e.payload()));
         }
         int acked = 0;
         for (CompletableFuture<RecordMetadata> s : sends) {
@@ -151,7 +159,7 @@ public final class SpoolingUsageSink implements UsageSink, AutoCloseable {
     return spool.depth();
   }
 
-  /** Waits until every usage handed to {@link #emit} so far was sent or spooled. */
+  /** Waits until every record handed to {@link #send} so far was sent or spooled. */
   public void awaitHandoff(Duration timeout) throws InterruptedException, TimeoutException {
     CompletableFuture<Void> marker = new CompletableFuture<>();
     delivery.execute(() -> marker.complete(null));

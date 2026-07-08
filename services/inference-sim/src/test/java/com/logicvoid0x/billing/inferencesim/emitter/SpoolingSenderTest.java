@@ -17,7 +17,7 @@ import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-class SpoolingUsageSinkTest {
+class SpoolingSenderTest {
   @TempDir Path dir;
 
   /** A producer whose broker can be switched off: sends fail at once while it is down. */
@@ -45,6 +45,10 @@ class SpoolingUsageSinkTest {
     }
   }
 
+  private static void send(SpoolingSender sender, RequestUsage u) {
+    sender.send(u.orgId(), UsageEventCodec.encode(u));
+  }
+
   private static RequestUsage usage(int i) {
     return UsageEmitterTest.usage("req_" + i, "org_" + (i % 3));
   }
@@ -53,16 +57,20 @@ class SpoolingUsageSinkTest {
   void usageSpoolsWhileKafkaIsDownAndDrainsInOrderWhenItReturns() throws Exception {
     SwitchableProducer producer = new SwitchableProducer();
     UsageSpool spool = UsageSpool.open(dir);
-    try (SpoolingUsageSink sink =
-        new SpoolingUsageSink(
-            new UsageEmitter(producer, "usage.raw"), spool, 2, Duration.ofSeconds(5))) {
-      sink.emit(usage(0));
+    try (SpoolingSender sink =
+        new SpoolingSender(
+            new UsageEmitter(producer, "usage.raw"),
+            spool,
+            HostUsageSink::keyOf,
+            2,
+            Duration.ofSeconds(5))) {
+      send(sink, usage(0));
       sink.awaitHandoff(Duration.ofSeconds(5));
       assertThat(producer.acked).containsExactly("req_0");
 
       producer.down.set(true);
       for (int i = 1; i <= 5; i++) {
-        sink.emit(usage(i));
+        send(sink, usage(i));
       }
       sink.awaitHandoff(Duration.ofSeconds(5));
       sink.awaitHandoff(Duration.ofSeconds(5)); // failure callbacks hand the append back once more
@@ -70,7 +78,7 @@ class SpoolingUsageSinkTest {
       assertThat(sink.drain()).as("still down").isZero();
 
       producer.down.set(false);
-      sink.emit(usage(6)); // arrives while the spool is non-empty: queued behind it
+      send(sink, usage(6)); // arrives while the spool is non-empty: queued behind it
       sink.awaitHandoff(Duration.ofSeconds(5));
       assertThat(sink.spoolDepth()).isEqualTo(6);
 
@@ -82,7 +90,7 @@ class SpoolingUsageSinkTest {
       assertThat(producer.acked.subList(1, 6))
           .containsExactlyInAnyOrder("req_1", "req_2", "req_3", "req_4", "req_5");
 
-      sink.emit(usage(7)); // spool empty again: straight to Kafka
+      send(sink, usage(7)); // spool empty again: straight to Kafka
       sink.awaitHandoff(Duration.ofSeconds(5));
       assertThat(producer.acked).endsWith("req_7");
     } finally {
@@ -97,9 +105,13 @@ class SpoolingUsageSinkTest {
     for (int i = 0; i < 4; i++) {
       spool.append(UsageEventCodec.encode(usage(i)));
     }
-    try (SpoolingUsageSink sink =
-        new SpoolingUsageSink(
-            new UsageEmitter(producer, "usage.raw"), spool, 10, Duration.ofSeconds(5))) {
+    try (SpoolingSender sink =
+        new SpoolingSender(
+            new UsageEmitter(producer, "usage.raw"),
+            spool,
+            HostUsageSink::keyOf,
+            10,
+            Duration.ofSeconds(5))) {
       producer.okBeforeDown = 2;
       assertThat(sink.drain()).isEqualTo(2);
       assertThat(sink.spoolDepth()).isEqualTo(2);

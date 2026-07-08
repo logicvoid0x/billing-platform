@@ -20,15 +20,17 @@ import org.springframework.boot.test.web.server.LocalServerPort;
     properties = {
       "usage.emitter.bootstrap-servers=127.0.0.1:1",
       "usage.spool.dir=build/tmp/emitter-wiring-spool",
-      "usage.spool.drain-every=1h"
+      "usage.control.spool-dir=build/tmp/emitter-wiring-control",
+      "usage.spool.drain-every=1h",
+      "usage.control.publish-every=1h"
     })
 class EmitterWiringTest {
   @LocalServerPort int port;
   @Autowired UsageSink sink;
 
   @Test
-  void theSpoolingSinkIsTheUsageSinkAndItsDepthIsAMetric() throws Exception {
-    assertThat(sink).isInstanceOf(SpoolingUsageSink.class);
+  void theHostSinkIsTheUsageSinkAndBothSpoolDepthsAreMetrics() throws Exception {
+    assertThat(sink).isInstanceOf(HostUsageSink.class);
     HttpResponse<String> metrics =
         HttpClient.newHttpClient()
             .send(
@@ -37,6 +39,8 @@ class EmitterWiringTest {
                     .build(),
                 HttpResponse.BodyHandlers.ofString());
     assertThat(metrics.statusCode()).isEqualTo(200);
-    assertThat(metrics.body()).contains("usage_spool_depth");
+    assertThat(metrics.body())
+        .contains("usage_spool_depth{spool=\"usage\"}")
+        .contains("usage_spool_depth{spool=\"control\"}");
   }
 }
