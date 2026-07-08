@@ -6,8 +6,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.logicvoid0x.billing.domain.MeterCode;
 import com.logicvoid0x.billing.domain.RequestUsage;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import org.apache.kafka.clients.producer.MockProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -55,8 +53,8 @@ class UsageEmitterTest {
   void theRecordKeyIsTheOrgId() {
     MockProducer<String, byte[]> producer =
         new MockProducer<>(true, null, new StringSerializer(), new ByteArraySerializer());
-    try (UsageEmitter emitter = new UsageEmitter(producer, "usage.raw", (u, e) -> {})) {
-      emitter.emit(usage("req_1", "org_acme"));
+    try (UsageEmitter emitter = new UsageEmitter(producer, "usage.raw")) {
+      var unused = emitter.send(usage("req_1", "org_acme"));
     }
     ProducerRecord<String, byte[]> sent = producer.history().get(0);
     assertThat(sent.topic()).isEqualTo("usage.raw");
@@ -65,17 +63,14 @@ class UsageEmitterTest {
   }
 
   @Test
-  void aFailedSendGoesToOnFailureAndIsCounted() {
+  void aFailedSendCompletesExceptionallyAndIsCounted() {
     MockProducer<String, byte[]> producer =
         new MockProducer<>(false, null, new StringSerializer(), new ByteArraySerializer());
-    List<String> failedRequests = new ArrayList<>();
-    UsageEmitter emitter =
-        new UsageEmitter(producer, "usage.raw", (u, e) -> failedRequests.add(u.requestId()));
+    UsageEmitter emitter = new UsageEmitter(producer, "usage.raw");
     var pending = emitter.send(usage("req_lost", "org_acme"));
     producer.errorNext(new org.apache.kafka.common.errors.TimeoutException("delivery timeout"));
 
     assertThat(pending).isCompletedExceptionally();
-    assertThat(failedRequests).containsExactly("req_lost");
     assertThat(emitter.failed()).isEqualTo(1);
     assertThat(emitter.delivered()).isZero();
   }

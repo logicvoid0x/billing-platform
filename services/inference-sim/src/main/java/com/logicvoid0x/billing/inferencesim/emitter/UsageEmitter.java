@@ -6,7 +6,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.BiConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -23,9 +22,10 @@ import org.apache.kafka.common.serialization.StringSerializer;
  * weaken it: {@code acks=all}, idempotence on (producer ID plus sequence, so retries are not
  * written twice), unlimited retries inside a 120 s delivery timeout, and at most 5 requests in
  * flight (the most idempotence keeps in order). The record key is the org ID, so one org's usage
- * stays on one partition in order.
+ * stays on one partition in order. What happens to a send that fails after every retry is up to the
+ * caller ({@link SpoolingUsageSink} spools it).
  */
-public final class UsageEmitter implements UsageSink, AutoCloseable {
+public final class UsageEmitter implements AutoCloseable {
   /** The raw usage topic. */
   public static final String TOPIC = "usage.raw";
 
@@ -34,7 +34,6 @@ public final class UsageEmitter implements UsageSink, AutoCloseable {
 
   private final Producer<String, byte[]> producer;
   private final String topic;
-  private final BiConsumer<RequestUsage, Throwable> onFailure;
   private final AtomicLong delivered = new AtomicLong();
   private final AtomicLong failed = new AtomicLong();
 
@@ -43,27 +42,20 @@ public final class UsageEmitter implements UsageSink, AutoCloseable {
    *
    * @param producer a producer configured with {@link #producerConfig}
    * @param topic the topic to write to
-   * @param onFailure called with the usage of a send that failed after every retry (P4.3 spools it)
    */
-  public UsageEmitter(
-      Producer<String, byte[]> producer,
-      String topic,
-      BiConsumer<RequestUsage, Throwable> onFailure) {
+  public UsageEmitter(Producer<String, byte[]> producer, String topic) {
     this.producer = Objects.requireNonNull(producer, "producer");
     this.topic = Objects.requireNonNull(topic, "topic");
-    this.onFailure = Objects.requireNonNull(onFailure, "onFailure");
   }
 
-  /** An emitter with its own producer to {@link #TOPIC}. */
-  public static UsageEmitter create(
-      String bootstrapServers, String clientId, BiConsumer<RequestUsage, Throwable> onFailure) {
+  /** An emitter with its own producer to {@code topic}. */
+  public static UsageEmitter create(String bootstrapServers, String clientId, String topic) {
     return new UsageEmitter(
         new KafkaProducer<>(
             producerConfig(bootstrapServers, clientId),
             new StringSerializer(),
             new ByteArraySerializer()),
-        TOPIC,
-        onFailure);
+        topic);
   }
 
   /** The producer settings; every delivery guarantee is explicit here. */
@@ -84,45 +76,34 @@ public final class UsageEmitter implements UsageSink, AutoCloseable {
             ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getName()));
   }
 
-  /** Sends one request's usage, keyed by org ID; failure after every retry goes to onFailure. */
-  @Override
-  public void emit(RequestUsage usage) {
-    // Failures are handled by onFailure inside send; the caller does not wait for the broker.
-    var unused = send(usage);
+  /** Sends one request's usage keyed by org ID; completes when the broker acknowledged it. */
+  public CompletableFuture<RecordMetadata> send(RequestUsage usage) {
+    return send(usage.orgId(), UsageEventCodec.encode(usage));
   }
 
-  /** Sends one request's usage; the future completes when the broker acknowledged it. */
-  public CompletableFuture<RecordMetadata> send(RequestUsage usage) {
+  /** Sends one encoded record; completes when the broker acknowledged it. */
+  public CompletableFuture<RecordMetadata> send(String key, byte[] value) {
     CompletableFuture<RecordMetadata> result = new CompletableFuture<>();
-    ProducerRecord<String, byte[]> record =
-        new ProducerRecord<>(topic, usage.orgId(), UsageEventCodec.encode(usage));
     try {
       // The callback carries the outcome; the returned Future adds nothing.
       var unused =
           producer.send(
-              record,
+              new ProducerRecord<>(topic, key, value),
               (metadata, error) -> {
                 if (error == null) {
                   delivered.incrementAndGet();
                   result.complete(metadata);
                 } else {
-                  fail(usage, error, result);
+                  failed.incrementAndGet();
+                  result.completeExceptionally(error);
                 }
               });
     } catch (RuntimeException e) {
       // Metadata wait exceeded or the producer is closed: the record never reached the buffer.
-      fail(usage, e, result);
+      failed.incrementAndGet();
+      result.completeExceptionally(e);
     }
     return result;
-  }
-
-  private void fail(RequestUsage usage, Throwable error, CompletableFuture<RecordMetadata> result) {
-    failed.incrementAndGet();
-    try {
-      onFailure.accept(usage, error);
-    } finally {
-      result.completeExceptionally(error);
-    }
   }
 
   /** Sends acknowledged by the broker. */
@@ -130,7 +111,7 @@ public final class UsageEmitter implements UsageSink, AutoCloseable {
     return delivered.get();
   }
 
-  /** Sends that failed after every retry and went to onFailure. */
+  /** Sends that failed after every retry. */
   public long failed() {
     return failed.get();
   }

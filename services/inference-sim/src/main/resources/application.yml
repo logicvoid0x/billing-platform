@@ -10,3 +10,13 @@ usage:
     enabled: true
     # Host listener of the compose broker; set per deployment.
     bootstrap-servers: localhost:19092
+  spool:
+    dir: data/usage-spool
+    drain-every: 5s
+    drain-batch: 500
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus

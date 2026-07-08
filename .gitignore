@@ -7,3 +7,6 @@
 # Gradle
 .gradle/
 build/
+
+# Local service data (usage spool etc.)
+data/

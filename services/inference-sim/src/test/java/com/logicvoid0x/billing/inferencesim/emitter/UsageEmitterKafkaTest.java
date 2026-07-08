@@ -43,7 +43,8 @@ class UsageEmitterKafkaTest {
     List<RequestUsage> sent = new ArrayList<>();
     Map<String, Integer> partitionOfOrg = new HashMap<>();
     try (UsageEmitter emitter =
-        UsageEmitter.create(KAFKA.getBootstrapServers(), "usage-emitter-test", (u, e) -> {})) {
+        UsageEmitter.create(
+            KAFKA.getBootstrapServers(), "usage-emitter-test", UsageEmitter.TOPIC)) {
       for (int i = 0; i < 60; i++) {
         RequestUsage u = UsageEmitterTest.usage("req_" + i, "org_" + (i % 5));
         sent.add(u);
