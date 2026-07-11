@@ -29,8 +29,11 @@ import org.slf4j.LoggerFactory;
  *   <li>A send that fails after every producer retry is appended to the spool when its failure is
  *       known, so it can land behind records sent after it. Order across a failure is not kept and
  *       is not needed: aggregation is by event time and deduplicated on requestId:meterCode.
- *   <li>{@link #drain} re-sends spooled records in order and advances the spool only past the
- *       contiguous prefix the broker acknowledged.
+ *   <li>After a failed send the sender counts Kafka as down: new records go straight to the spool,
+ *       so none waits on metadata (max.block.ms) in memory. A drain that empties the spool clears
+ *       it.
+ *   <li>{@link #drain} probes with one record, then re-sends the rest in order, and advances the
+ *       spool only past the contiguous prefix the broker acknowledged.
  * </ul>
  */
 public final class SpoolingSender implements AutoCloseable {
@@ -44,6 +47,9 @@ public final class SpoolingSender implements AutoCloseable {
   private final ExecutorService delivery =
       Executors.newSingleThreadExecutor(Thread.ofPlatform().name("spool-delivery").factory());
   private final ReentrantLock drainLock = new ReentrantLock();
+
+  /** Set when a send fails; cleared when a drain empties the spool. */
+  private volatile boolean down;
 
   /**
    * Creates the sender.
@@ -78,7 +84,9 @@ public final class SpoolingSender implements AutoCloseable {
   }
 
   private void deliver(String key, byte[] encoded) {
-    if (!spool.isEmpty()) {
+    // While Kafka is known to be down, go straight to disk: a send would block on metadata for up
+    // to max.block.ms per record and hold every later record in memory behind it.
+    if (down || !spool.isEmpty()) {
       spool.append(encoded);
       return;
     }
@@ -87,6 +95,7 @@ public final class SpoolingSender implements AutoCloseable {
             .send(key, encoded)
             .whenComplete((metadata, error) -> {
               if (error != null) {
+                down = true;
                 log.warn("send failed after every retry; spooling it: {}", error.toString());
                 spoolLater(encoded);
               }
@@ -116,7 +125,20 @@ public final class SpoolingSender implements AutoCloseable {
       while (true) {
         List<UsageSpool.Entry> batch = spool.peek(drainBatch);
         if (batch.isEmpty()) {
+          down = false;
           return drained;
+        }
+        // Probe with the first record before sending the rest: while Kafka is down, each send can
+        // block on metadata for max.block.ms, so a whole batch would take batch x max.block.ms.
+        UsageSpool.Entry first = batch.get(0);
+        if (!acknowledged(emitter.send(keyOf.apply(first.payload()), first.payload()))) {
+          return drained;
+        }
+        spool.commit(first.nextOffset(), 1);
+        drained++;
+        batch = batch.subList(1, batch.size());
+        if (batch.isEmpty()) {
+          continue;
         }
         List<CompletableFuture<RecordMetadata>> sends = new ArrayList<>(batch.size());
         for (UsageSpool.Entry e : batch) {
@@ -170,6 +192,11 @@ public final class SpoolingSender implements AutoCloseable {
     }
   }
 
+  /**
+   * Stops taking records, finishes the queued hand-offs, then closes the emitter within its
+   * delivery timeout. Sends that fail meanwhile are appended to the spool, which must stay open
+   * until this returns. Never waits without a bound: a flush would wait forever on a dead broker.
+   */
   @Override
   public void close() {
     delivery.shutdown();
@@ -180,6 +207,6 @@ public final class SpoolingSender implements AutoCloseable {
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     }
-    emitter.flush();
+    emitter.close();
   }
 }

@@ -60,15 +60,24 @@ public final class UsageEmitter implements AutoCloseable {
 
   /** The producer settings; every delivery guarantee is explicit here. */
   public static Map<String, Object> producerConfig(String bootstrapServers, String clientId) {
+    return producerConfig(bootstrapServers, clientId, DELIVERY_TIMEOUT, Duration.ofSeconds(30));
+  }
+
+  /**
+   * Same settings with shorter timeouts, so tests reach the failure path in seconds. Production
+   * code uses {@link #producerConfig(String, String)}.
+   */
+  static Map<String, Object> producerConfig(
+      String bootstrapServers, String clientId, Duration deliveryTimeout, Duration requestTimeout) {
     return Map.ofEntries(
         Map.entry(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers),
         Map.entry(ProducerConfig.CLIENT_ID_CONFIG, clientId),
         Map.entry(ProducerConfig.ACKS_CONFIG, "all"),
         Map.entry(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true),
         Map.entry(ProducerConfig.RETRIES_CONFIG, Integer.MAX_VALUE),
-        Map.entry(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, (int) DELIVERY_TIMEOUT.toMillis()),
+        Map.entry(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, (int) deliveryTimeout.toMillis()),
         Map.entry(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 5),
-        Map.entry(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, 30_000),
+        Map.entry(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, (int) requestTimeout.toMillis()),
         Map.entry(ProducerConfig.LINGER_MS_CONFIG, 5),
         Map.entry(ProducerConfig.MAX_BLOCK_MS_CONFIG, 10_000),
         Map.entry(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName()),
