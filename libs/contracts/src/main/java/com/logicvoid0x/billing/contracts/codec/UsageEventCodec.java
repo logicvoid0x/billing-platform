@@ -1,4 +1,4 @@
-package com.logicvoid0x.billing.inferencesim.emitter;
+package com.logicvoid0x.billing.contracts.codec;
 
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Timestamp;

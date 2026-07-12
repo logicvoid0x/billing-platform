@@ -3,6 +3,7 @@ package com.logicvoid0x.billing.inferencesim.emitter;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.logicvoid0x.billing.contracts.codec.UsageEventCodec;
 import com.logicvoid0x.billing.domain.MeterCode;
 import com.logicvoid0x.billing.domain.RequestUsage;
 import java.time.Instant;

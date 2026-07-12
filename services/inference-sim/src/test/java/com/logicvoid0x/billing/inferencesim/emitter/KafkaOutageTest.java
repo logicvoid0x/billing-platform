@@ -6,6 +6,7 @@ import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.model.ExposedPort;
 import com.github.dockerjava.api.model.PortBinding;
 import com.github.dockerjava.api.model.Ports;
+import com.logicvoid0x.billing.contracts.codec.UsageEventCodec;
 import com.logicvoid0x.billing.contracts.v1.ControlTotals;
 import com.logicvoid0x.billing.domain.MeterCode;
 import com.logicvoid0x.billing.domain.RequestUsage;

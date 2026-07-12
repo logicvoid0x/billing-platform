@@ -1,5 +1,6 @@
 package com.logicvoid0x.billing.inferencesim.emitter;
 
+import com.logicvoid0x.billing.contracts.codec.UsageEventCodec;
 import com.logicvoid0x.billing.domain.RequestUsage;
 import java.time.Duration;
 import java.util.Map;

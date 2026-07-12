@@ -4,5 +4,6 @@ plugins {
 }
 
 dependencies {
+    api(project(":libs:domain")) // codecs between wire messages and domain records
     testImplementation(libs.grpc.inprocess)
 }

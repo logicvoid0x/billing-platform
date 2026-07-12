@@ -34,6 +34,9 @@ import org.springframework.context.annotation.Configuration;
 public class EmitterConfiguration {
   private static final Logger log = LoggerFactory.getLogger(EmitterConfiguration.class);
 
+  /** Past the producer's own delivery timeout, so it normally reports the failure itself. */
+  private static final Duration ACK_WAIT = UsageEmitter.DELIVERY_TIMEOUT.plusSeconds(30);
+
   @Value("${usage.emitter.bootstrap-servers:localhost:19092}")
   private String bootstrapServers;
 
@@ -75,8 +78,7 @@ public class EmitterConfiguration {
       @Qualifier("usageSpool") UsageSpool spool,
       MeterRegistry registry) {
     return gauged(
-        new SpoolingSender(
-            emitter, spool, HostUsageSink::keyOf, drainBatch, UsageEmitter.DELIVERY_TIMEOUT),
+        new SpoolingSender(emitter, spool, HostUsageSink::keyOf, drainBatch, ACK_WAIT),
         "usage",
         registry);
   }
@@ -88,12 +90,7 @@ public class EmitterConfiguration {
       @Qualifier("controlSpool") UsageSpool spool,
       MeterRegistry registry) {
     return gauged(
-        new SpoolingSender(
-            emitter,
-            spool,
-            ControlTotalsPublisher::keyOf,
-            drainBatch,
-            UsageEmitter.DELIVERY_TIMEOUT),
+        new SpoolingSender(emitter, spool, ControlTotalsPublisher::keyOf, drainBatch, ACK_WAIT),
         "control",
         registry);
   }

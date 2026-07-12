@@ -29,6 +29,8 @@ import org.slf4j.LoggerFactory;
  *   <li>A send that fails after every producer retry is appended to the spool when its failure is
  *       known, so it can land behind records sent after it. Order across a failure is not kept and
  *       is not needed: aggregation is by event time and deduplicated on requestId:meterCode.
+ *   <li>A send that is not acknowledged within {@code ackWait} counts as failed and is spooled,
+ *       even if the producer still holds it: it never waits in memory without a bound.
  *   <li>After a failed send the sender counts Kafka as down: new records go straight to the spool,
  *       so none waits on metadata (max.block.ms) in memory. A drain that empties the spool clears
  *       it.
@@ -58,7 +60,7 @@ public final class SpoolingSender implements AutoCloseable {
    * @param spool the disk spool
    * @param keyOf the record key of a spooled payload (used when draining)
    * @param drainBatch most records re-sent per drain round
-   * @param ackWait how long a drain waits for one record's acknowledgement
+   * @param ackWait how long a send may wait for its acknowledgement before it counts as failed
    */
   public SpoolingSender(
       UsageEmitter emitter,
@@ -93,6 +95,10 @@ public final class SpoolingSender implements AutoCloseable {
     var unused =
         emitter
             .send(key, encoded)
+            // The producer can hold a record past its delivery timeout (for example while it cannot
+            // get a producer ID). After ackWait the record is spooled anyway; if the original
+            // still lands, downstream dedupe absorbs the duplicate.
+            .orTimeout(ackWait.toMillis(), TimeUnit.MILLISECONDS)
             .whenComplete((metadata, error) -> {
               if (error != null) {
                 down = true;
