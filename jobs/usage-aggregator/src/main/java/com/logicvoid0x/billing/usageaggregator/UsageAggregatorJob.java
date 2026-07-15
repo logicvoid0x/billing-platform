@@ -40,6 +40,11 @@ public final class UsageAggregatorJob {
     return raw.process(new ResolveUsage(rating)).name("resolve-skus").uid("resolve-skus");
   }
 
+  /** Drops repeated lines: the first line per {@code requestId:meterCode} wins (7-day TTL). */
+  public static SingleOutputStreamOperator<MeteredLine> dedupe(DataStream<MeteredLine> lines) {
+    return lines.keyBy(DedupeLines::key).process(new DedupeLines()).name("dedupe").uid("dedupe");
+  }
+
   /** Wires the job between Kafka topics. */
   public static void build(
       StreamExecutionEnvironment env, String bootstrapServers, RatingSource rating) {
@@ -69,8 +74,8 @@ public final class UsageAggregatorJob {
             .build();
     lines.getSideOutput(ResolveUsage.DEAD_LETTERS).sinkTo(dlq).name("usage-dlq").uid("usage-dlq");
 
-    // Replaced by dedupe, windows and the batch sink in P5.2-P5.4.
-    lines.sinkTo(new DiscardingSink<>()).name("metered-lines").uid("metered-lines");
+    // Replaced by the hourly windows and the batch sink in P5.3-P5.4.
+    dedupe(lines).sinkTo(new DiscardingSink<>()).name("metered-lines").uid("metered-lines");
   }
 
   /** Submits the job: {@code <bootstrap-servers>}. */

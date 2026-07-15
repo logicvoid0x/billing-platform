@@ -7,6 +7,7 @@ dependencies {
     implementation(libs.flink.connector.kafka)
 
     testImplementation(libs.flink.test.utils)
+    testImplementation(variantOf(libs.flink.streaming) { classifier("tests") }) // operator harnesses
     testImplementation(testFixtures(project(":libs:rating")))
     testImplementation(testFixtures(project(":libs:money")))
 }
