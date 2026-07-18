@@ -24,6 +24,9 @@ public final class UsageAggregatorJob {
   /** Dead-letter topic. */
   public static final String DLQ_TOPIC = "usage.dlq";
 
+  /** Lines later than the allowed lateness. */
+  public static final String CORRECTIONS_TOPIC = "usage.corrections";
+
   private UsageAggregatorJob() {}
 
   /** Job name used when submitting to the cluster. */
@@ -57,7 +60,7 @@ public final class UsageAggregatorJob {
             .setStartingOffsets(OffsetsInitializer.earliest())
             .setDeserializer(new RawUsageDeserializer())
             .build();
-    // Event-time watermarks arrive with the hourly windows (P5.3).
+    // Event time is only known after decoding: watermarks are assigned on the metered lines.
     DataStream<RawUsage> raw =
         env.fromSource(source, WatermarkStrategy.noWatermarks(), "usage.raw").uid("usage-raw");
     SingleOutputStreamOperator<MeteredLine> lines = resolve(raw, rating);
@@ -74,8 +77,23 @@ public final class UsageAggregatorJob {
             .build();
     lines.getSideOutput(ResolveUsage.DEAD_LETTERS).sinkTo(dlq).name("usage-dlq").uid("usage-dlq");
 
-    // Replaced by the hourly windows and the batch sink in P5.3-P5.4.
-    dedupe(lines).sinkTo(new DiscardingSink<>()).name("metered-lines").uid("metered-lines");
+    SingleOutputStreamOperator<HourlyUsage> hourly =
+        HourlyWindows.apply(dedupe(lines), HourlyWindows.watermarks());
+
+    KafkaSink<MeteredLine> corrections =
+        KafkaSink.<MeteredLine>builder()
+            .setBootstrapServers(bootstrapServers)
+            .setDeliveryGuarantee(DeliveryGuarantee.AT_LEAST_ONCE)
+            .setRecordSerializer(new CorrectionSerializer(CORRECTIONS_TOPIC))
+            .build();
+    hourly
+        .getSideOutput(HourlyWindows.TOO_LATE)
+        .sinkTo(corrections)
+        .name("usage-corrections")
+        .uid("usage-corrections");
+
+    // Replaced by the checkpoint-aligned usage_hourly sink in P5.4.
+    hourly.sinkTo(new DiscardingSink<>()).name("usage-hourly").uid("usage-hourly");
   }
 
   /** Submits the job: {@code <bootstrap-servers>}. */
