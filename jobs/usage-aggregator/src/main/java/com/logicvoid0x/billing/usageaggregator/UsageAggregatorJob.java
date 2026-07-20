@@ -1,16 +1,19 @@
 package com.logicvoid0x.billing.usageaggregator;
 
 import com.logicvoid0x.billing.domain.MeteredLine;
+import com.logicvoid0x.billing.usageaggregator.sink.Jdbc;
+import com.logicvoid0x.billing.usageaggregator.sink.UsageHourlySink;
+import java.time.Duration;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.connector.base.DeliveryGuarantee;
 import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
 import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
+import org.apache.flink.core.execution.CheckpointingMode;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.sink.v2.DiscardingSink;
 
 /**
  * The Flink usage aggregator (design: "validate, resolve SKUs, dedupe, one batch per checkpoint").
@@ -23,6 +26,9 @@ public final class UsageAggregatorJob {
 
   /** Dead-letter topic. */
   public static final String DLQ_TOPIC = "usage.dlq";
+
+  /** Checkpoint interval (plan: 15-30 s). */
+  public static final Duration CHECKPOINT_INTERVAL = Duration.ofSeconds(20);
 
   /** Lines later than the allowed lateness. */
   public static final String CORRECTIONS_TOPIC = "usage.corrections";
@@ -50,7 +56,9 @@ public final class UsageAggregatorJob {
 
   /** Wires the job between Kafka topics. */
   public static void build(
-      StreamExecutionEnvironment env, String bootstrapServers, RatingSource rating) {
+      StreamExecutionEnvironment env, String bootstrapServers, RatingSource rating, Jdbc metering) {
+    // One usage_hourly batch per checkpoint (P5.4); exactly-once barriers, 20 s apart.
+    env.enableCheckpointing(CHECKPOINT_INTERVAL.toMillis(), CheckpointingMode.EXACTLY_ONCE);
     KafkaSource<RawUsage> source =
         KafkaSource.<RawUsage>builder()
             .setBootstrapServers(bootstrapServers)
@@ -92,8 +100,10 @@ public final class UsageAggregatorJob {
         .name("usage-corrections")
         .uid("usage-corrections");
 
-    // Replaced by the checkpoint-aligned usage_hourly sink in P5.4.
-    hourly.sinkTo(new DiscardingSink<>()).name("usage-hourly").uid("usage-hourly");
+    hourly
+        .sinkTo(new UsageHourlySink(jobName(), metering))
+        .name("usage-hourly")
+        .uid("usage-hourly");
   }
 
   /** Submits the job: {@code <bootstrap-servers>}. */
