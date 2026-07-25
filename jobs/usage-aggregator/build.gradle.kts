@@ -8,6 +8,7 @@ dependencies {
     implementation(project(":libs:rating"))
     implementation(libs.flink.connector.base)
     implementation(libs.flink.connector.kafka)
+    flinkProvided(libs.flink.statebackend.rocksdb) // in the Flink distribution
     implementation(libs.postgresql)
     implementation(libs.flyway.core)
     implementation(libs.flyway.postgresql)

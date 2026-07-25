@@ -5,6 +5,8 @@ import com.logicvoid0x.billing.usageaggregator.sink.Jdbc;
 import com.logicvoid0x.billing.usageaggregator.sink.UsageHourlySink;
 import java.time.Duration;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.StateBackendOptions;
 import org.apache.flink.connector.base.DeliveryGuarantee;
 import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
 import org.apache.flink.connector.kafka.sink.KafkaSink;
@@ -54,11 +56,19 @@ public final class UsageAggregatorJob {
     return lines.keyBy(DedupeLines::key).process(new DedupeLines()).name("dedupe").uid("dedupe");
   }
 
+  /** RocksDB state (plan: "RocksDB state backend"); dedupe keeps 7 days of keys. */
+  public static Configuration stateConfig() {
+    Configuration c = new Configuration();
+    c.set(StateBackendOptions.STATE_BACKEND, "rocksdb");
+    return c;
+  }
+
   /** Wires the job between Kafka topics. */
   public static void build(
       StreamExecutionEnvironment env, String bootstrapServers, RatingSource rating, Jdbc metering) {
     // One usage_hourly batch per checkpoint (P5.4); exactly-once barriers, 20 s apart.
     env.enableCheckpointing(CHECKPOINT_INTERVAL.toMillis(), CheckpointingMode.EXACTLY_ONCE);
+    env.configure(stateConfig());
     KafkaSource<RawUsage> source =
         KafkaSource.<RawUsage>builder()
             .setBootstrapServers(bootstrapServers)
