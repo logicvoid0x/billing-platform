@@ -10,3 +10,4 @@ build/
 
 # Local service data (usage spool etc.)
 data/
+infra/connect/plugins/

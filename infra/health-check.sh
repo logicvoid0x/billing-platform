@@ -4,7 +4,8 @@
 # Kafka Connect with the Iceberg sink plugin. Exits non-zero if anything is unhealthy.
 set -uo pipefail
 
-here="$(cd "$(dirname "$0")" && pwd)"
+# pwd -W: a Windows path under Git Bash, where docker gets paths unconverted (MSYS_NO_PATHCONV).
+here="$(cd "$(dirname "$0")" && (pwd -W 2>/dev/null || pwd))"
 # MSYS_NO_PATHCONV: Git Bash on Windows would rewrite container paths (/opt/...) given to docker.
 compose=(env MSYS_NO_PATHCONV=1 docker compose -f "$here/docker-compose.yml")
 failures=0
@@ -31,7 +32,7 @@ kafka_topics() {
 has_all_topics() {
   local listed
   listed=$(kafka_topics | tr -d '\r') || return 1
-  for t in usage.raw usage.control usage.dlq usage.corrections budget.settle budget.changes gateway.log; do
+  for t in usage.raw usage.archive.control usage.control usage.dlq usage.corrections budget.settle budget.changes gateway.log; do
     grep -qx "$t" <<<"$listed" || { echo "missing topic $t"; return 1; }
   done
 }
@@ -41,6 +42,17 @@ postgres_schemas() {
     "select count(*) from information_schema.schemata where schema_name in
      ('catalog','metering','rating','balance_ledger','budget_shard','reconciliation','invoicing','payments','usage_view')" |
     tr -d '\r' | grep -qx 9
+}
+
+# Connector and every task RUNNING (a connector can run while its tasks have failed).
+connector_running() {
+  local status
+  status=$(curl -fsS -m 5 "http://localhost:8083/connectors/$1/status") || return 1
+  grep -qF '"tasks":[{' <<<"$status" || { echo "no tasks"; return 1; }
+  if grep -qE '"state":"(FAILED|PAUSED|UNASSIGNED)"' <<<"$status"; then
+    echo "$status" | head -c 300
+    return 1
+  fi
 }
 
 flink_has_taskmanager() {
@@ -60,6 +72,7 @@ check "flink jobmanager + taskmanager" flink_has_taskmanager
 check "seaweedfs s3 buckets (archive, flink)" s3_buckets
 check "iceberg rest catalog" http_ok http://localhost:8181/v1/config
 check "kafka connect iceberg sink plugin" http_has http://localhost:8083/connector-plugins IcebergSinkConnector
+check "usage.raw archive connector and tasks running" connector_running usage-raw-iceberg
 check "prometheus" http_ok http://localhost:9090/-/healthy
 check "grafana" http_ok http://localhost:3000/api/health
 check "toxiproxy" http_ok http://localhost:8474/version

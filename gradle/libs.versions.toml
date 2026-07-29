@@ -34,6 +34,7 @@ errorpronePlugin = "5.2.0"
 jacoco = "0.8.16"
 
 [libraries]
+kafka-connect-api = { module = "org.apache.kafka:connect-api", version.ref = "kafka" }
 kafka-clients = { module = "org.apache.kafka:kafka-clients", version.ref = "kafka" }
 flink-streaming = { module = "org.apache.flink:flink-streaming-java", version.ref = "flink" }
 flink-clients = { module = "org.apache.flink:flink-clients", version.ref = "flink" }

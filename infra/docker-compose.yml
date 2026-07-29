@@ -113,8 +113,12 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
+        # Idempotent: an existing bucket counts as done.
+        set -e
         for b in archive flink; do
-          echo "s3.bucket.create -name $$b" | weed shell -master=seaweedfs:9333
+          out=$$(echo "s3.bucket.create -name $$b" | weed shell -master=seaweedfs:9333 2>&1 || true)
+          echo "$$out"
+          echo "$$out" | grep -qE "created bucket|already exists"
         done
     restart: "no"
 

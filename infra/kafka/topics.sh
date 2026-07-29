@@ -10,7 +10,8 @@ set -euo pipefail
 # Git Bash on Windows rewrites absolute container paths (/opt/...) passed to docker; stop that.
 export MSYS_NO_PATHCONV=1
 
-here="$(cd "$(dirname "$0")" && pwd)"
+# pwd -W: a Windows path under Git Bash, where docker gets paths unconverted (MSYS_NO_PATHCONV).
+here="$(cd "$(dirname "$0")" && (pwd -W 2>/dev/null || pwd))"
 compose_file="$here/../docker-compose.yml"
 
 profile=single
@@ -34,6 +35,7 @@ DAY_MS=86400000
 # name | partitions | extra configs (comma-separated) | key and purpose
 topics=(
   "usage.raw|24|retention.ms=$((14 * DAY_MS))|key org_id; RequestUsage facts, archived to Iceberg"
+  "usage.archive.control|1|retention.ms=$((7 * DAY_MS))|Iceberg sink commit coordination, not business data"
   "usage.control|6|retention.ms=$((14 * DAY_MS))|key host_id; per-host control totals"
   "usage.dlq|6|retention.ms=$((30 * DAY_MS))|key org_id; malformed or unresolvable usage"
   "usage.corrections|12|retention.ms=$((30 * DAY_MS))|key org_id; usage later than allowed lateness"

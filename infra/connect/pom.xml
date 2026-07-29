@@ -54,5 +54,37 @@
       <artifactId>commons-logging</artifactId>
       <version>1.3.5</version>
     </dependency>
+    <!-- Hadoop Configuration parses its XML defaults with Woodstox (found by the first live run). -->
+    <dependency>
+      <groupId>com.fasterxml.woodstox</groupId>
+      <artifactId>woodstox-core</artifactId>
+      <version>7.1.1</version>
+    </dependency>
+    <dependency>
+      <groupId>org.codehaus.woodstox</groupId>
+      <artifactId>stax2-api</artifactId>
+      <version>4.2.2</version>
+    </dependency>
+    <!-- Used by org.apache.hadoop.conf.Configuration static init and its helpers. -->
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-collections4</artifactId>
+      <version>4.5.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-lang3</artifactId>
+      <version>3.18.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-configuration2</artifactId>
+      <version>2.12.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-text</artifactId>
+      <version>1.14.0</version>
+    </dependency>
   </dependencies>
 </project>
