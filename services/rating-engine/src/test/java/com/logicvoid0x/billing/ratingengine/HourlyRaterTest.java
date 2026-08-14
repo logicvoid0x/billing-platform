@@ -147,13 +147,54 @@ class HourlyRaterTest {
   }
 
   @Test
+  void aCommitmentReplacesTierStateAndIsDrawnDownInHourAndSkuOrder() throws Exception {
+    exec(
+        "INSERT INTO rating.commitment (org_id, period_start, commit_cents, contract_version)"
+            + " VALUES ('org_commit', '2026-11-01T00:00:00Z', 50000, 3)");
+    usage("org_commit", "sku_out", H10, 1_000_000); // 1,500c
+    usage("org_commit", "sku_tiered", H10, 10_000_000); // 15,000c at the first tier
+    usage("org_commit", "sku_tiered", H11, 2_000_000_000L); // flat 15/M: no tier progression
+    usage("org_commit", "sku_out", H11, 40_000_000); // 60,000c
+    rater.rateSealedHours(NOW);
+
+    List<String> rows = new ArrayList<>();
+    try (Connection c = ds.getConnection();
+        Statement s = c.createStatement();
+        ResultSet rs =
+            s.executeQuery(
+                "SELECT event_hour, sku_id, amount_cents, drawdown_cents, pricing_path"
+                    + " FROM rating.rated_ledger WHERE org_id = 'org_commit'"
+                    + " ORDER BY event_hour, sku_id")) {
+      while (rs.next()) {
+        rows.add(
+            rs.getTimestamp(1).toInstant().toString().substring(11, 13)
+                + " "
+                + rs.getString(2)
+                + " "
+                + rs.getLong(3)
+                + "/"
+                + rs.getLong(4)
+                + " "
+                + rs.getString(5));
+      }
+    }
+    // Commitment 50,000c: 1,500 + 15,000 + 33,500 drawn down, then nothing left.
+    assertThat(rows)
+        .containsExactly(
+            "10 sku_out 1500/1500 COMMIT",
+            "10 sku_tiered 15000/15000 COMMIT",
+            "11 sku_out 60000/33500 COMMIT",
+            "11 sku_tiered 3000000/0 COMMIT");
+  }
+
+  @Test
   void anHourEarlierThanARatedHourIsRefusedAndTheLedgerIsAppendOnly() throws Exception {
     usage("org_late", "sku_out", H11, 10);
     rater.rateSealedHours(NOW);
     usage("org_late", "sku_out", H10, 5);
     HourlyRater.Result r = rater.rateSealedHours(NOW);
     assertThat(r.blocked())
-        .filteredOn(b -> b.startsWith("org_late|sku_out|"))
+        .filteredOn(b -> b.startsWith("org_late|"))
         .singleElement(org.assertj.core.api.InstanceOfAssertFactories.STRING)
         .contains("re-rate the period");
     assertThat(ledger("org_late")).as("the late hour stays unrated").hasSize(1);
