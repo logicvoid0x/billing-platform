@@ -90,10 +90,48 @@ public final class BalanceLedger {
    * @throws ConflictingEntryException if the key was used for a different entry
    */
   public boolean post(Entry e) throws SQLException {
+    return post(e, Long.MIN_VALUE) == Outcome.POSTED;
+  }
+
+  /** Result of a guarded post. */
+  public enum Outcome {
+    /** Posted now. */
+    POSTED,
+    /** The identical entry was already posted. */
+    ALREADY_POSTED,
+    /** Not posted: spendable credit would have fallen below the reserve. */
+    REFUSED
+  }
+
+  /**
+   * Posts an entry that debits customer credit only if spendable credit stays at or above {@code
+   * reserveCents} afterwards. The check and the post are atomic per org (advisory lock), so
+   * concurrent grants cannot together dip below the reserve.
+   */
+  public Outcome post(Entry e, long reserveCents) throws SQLException {
     List<Posting> postings = postings(e);
     try (Connection c = dataSource.getConnection()) {
       c.setAutoCommit(false);
       try {
+        try (PreparedStatement s =
+            c.prepareStatement("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))")) {
+          s.setString(1, "balance_ledger:" + e.orgId());
+          s.execute();
+        }
+        if (reserveCents != Long.MIN_VALUE) {
+          long debitOfCredit = 0;
+          String credit = AccountKind.CUSTOMER_CREDIT.accountId(e.orgId(), null);
+          for (Posting p : postings) {
+            if (p.accountId().equals(credit)) {
+              debitOfCredit = Math.addExact(debitOfCredit, p.debitCents());
+            }
+          }
+          if (Math.subtractExact(spendable(c, e.orgId()), debitOfCredit) < reserveCents
+              && !exists(c, e.key())) {
+            c.rollback();
+            return Outcome.REFUSED;
+          }
+        }
         boolean inserted;
         try (PreparedStatement s =
             c.prepareStatement(
@@ -108,7 +146,7 @@ public final class BalanceLedger {
         if (!inserted) {
           requireSame(c, e, postings);
           c.rollback();
-          return false;
+          return Outcome.ALREADY_POSTED;
         }
         try (PreparedStatement s =
             c.prepareStatement(
@@ -127,10 +165,33 @@ public final class BalanceLedger {
           s.executeBatch();
         }
         c.commit(); // deferred checks run here
-        return true;
+        return Outcome.POSTED;
       } catch (SQLException | RuntimeException ex) {
         c.rollback();
         throw ex;
+      }
+    }
+  }
+
+  private static boolean exists(Connection c, String key) throws SQLException {
+    try (PreparedStatement s =
+        c.prepareStatement("SELECT 1 FROM balance_ledger.entry WHERE entry_key = ?")) {
+      s.setString(1, key);
+      try (ResultSet rs = s.executeQuery()) {
+        return rs.next();
+      }
+    }
+  }
+
+  private static long spendable(Connection c, String org) throws SQLException {
+    try (PreparedStatement s =
+        c.prepareStatement(
+            "SELECT coalesce(sum(credit_cents), 0) - coalesce(sum(debit_cents), 0)"
+                + " FROM balance_ledger.posting WHERE account_id = ?")) {
+      s.setString(1, AccountKind.CUSTOMER_CREDIT.accountId(org, null));
+      try (ResultSet rs = s.executeQuery()) {
+        rs.next();
+        return rs.getLong(1);
       }
     }
   }
@@ -188,6 +249,21 @@ public final class BalanceLedger {
       try (ResultSet rs = s.executeQuery()) {
         rs.next();
         return rs.getLong(1);
+      }
+    }
+  }
+
+  /** The amount an existing entry moved, if the key was posted. */
+  public java.util.OptionalLong amountOf(String key) throws SQLException {
+    try (Connection c = dataSource.getConnection();
+        PreparedStatement s =
+            c.prepareStatement(
+                "SELECT sum(debit_cents) FROM balance_ledger.posting WHERE entry_key = ?")) {
+      s.setString(1, key);
+      try (ResultSet rs = s.executeQuery()) {
+        rs.next();
+        long v = rs.getLong(1);
+        return rs.wasNull() ? java.util.OptionalLong.empty() : java.util.OptionalLong.of(v);
       }
     }
   }
