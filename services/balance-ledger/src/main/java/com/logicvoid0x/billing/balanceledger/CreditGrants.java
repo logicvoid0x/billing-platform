@@ -85,7 +85,7 @@ public final class CreditGrants {
         continue;
       }
       long left =
-          lots(org, g.expiresAt()).stream()
+          lotsBefore(org, g.expiresAt()).stream()
               .filter(l -> l.id().equals(g.id()))
               .mapToLong(Lot::remaining)
               .sum();
@@ -137,11 +137,22 @@ public final class CreditGrants {
   private record Draw(Live lot, long cents) {}
 
   /**
-   * The lots of {@code org} after replaying every customer-credit posting that occurred before
-   * {@code asOf} (strictly), grants first by expiry, cash last. Their remainders sum to spendable
+   * The lots of {@code org} after replaying every customer-credit posting that occurred at or
+   * before {@code asOf}, grants first by expiry, cash last. Their remainders sum to spendable
    * credit at that time.
    */
   public List<Lot> lots(String org, Instant asOf) throws SQLException {
+    return replay(org, asOf, true);
+  }
+
+  /**
+   * As {@link #lots}, but only postings strictly before {@code t} (what a grant held at expiry).
+   */
+  List<Lot> lotsBefore(String org, Instant t) throws SQLException {
+    return replay(org, t, false);
+  }
+
+  private List<Lot> replay(String org, Instant asOf, boolean inclusive) throws SQLException {
     Map<String, Live> byFundingKey = new LinkedHashMap<>();
     Map<String, Live> byGrant = new LinkedHashMap<>();
     for (GrantRow g : grants(org)) {
@@ -160,7 +171,9 @@ public final class CreditGrants {
             c.prepareStatement(
                 "SELECT e.entry_key, e.entry_type, e.occurred_at, p.debit_cents, p.credit_cents"
                     + " FROM balance_ledger.posting p JOIN balance_ledger.entry e USING (entry_key)"
-                    + " WHERE p.account_id = ? AND e.occurred_at < ?"
+                    + " WHERE p.account_id = ? AND e.occurred_at "
+                    + (inclusive ? "<=" : "<")
+                    + " ?"
                     + " ORDER BY e.occurred_at, e.created_at, e.entry_key")) {
       s.setString(1, AccountKind.CUSTOMER_CREDIT.accountId(org, null));
       s.setTimestamp(2, Timestamp.from(asOf));
