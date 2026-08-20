@@ -4,3 +4,14 @@ spring:
   threads:
     virtual:
       enabled: true
+
+gateway:
+  # Off until the rating library has a deployed catalog source (open question Q7).
+  enabled: false
+  host-id: gw-local-1
+  home-region: local
+  shard-target: localhost:9099
+  upstream-url: http://localhost:8080
+  kafka-bootstrap-servers: localhost:19092
+  per-minute: 600
+  chunk-tokens: 2048
