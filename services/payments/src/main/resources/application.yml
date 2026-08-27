@@ -4,3 +4,12 @@ spring:
   threads:
     virtual:
       enabled: true
+
+server:
+  port: 8085 # the Stripe CLI forwards here (infra/docker-compose.yml, profile stripe)
+
+payments:
+  # Off until the balance ledger has a top-up API (open question Q10).
+  enabled: false
+  stripe:
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
