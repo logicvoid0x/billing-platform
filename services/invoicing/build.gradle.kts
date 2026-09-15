@@ -1,3 +1,7 @@
 plugins { id("billing.java-service-21") }
 
-dependencies { testImplementation(testFixtures(project(":libs:money"))) }
+dependencies {
+    implementation(project(":libs:rating"))
+    testImplementation(testFixtures(project(":libs:money")))
+    testImplementation(testFixtures(project(":libs:rating")))
+}
