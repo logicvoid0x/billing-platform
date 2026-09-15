@@ -13,6 +13,8 @@ dependencies {
     runtimeOnly(libs.hadoop.client.api)
     runtimeOnly(libs.hadoop.client.runtime)
     testImplementation(testFixtures(project(":libs:money")))
+    testImplementation(testFixtures(project(":libs:rating"))) // golden catalog for the scenario
+    testImplementation(project(":libs:rating"))
     testImplementation(platform(libs.testcontainers.bom))
     testImplementation(libs.testcontainers.junit)
     testImplementation(libs.testcontainers.kafka)
