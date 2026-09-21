@@ -1,6 +1,10 @@
 global:
   scrape_interval: 15s
 
+# SLO alerts, one per signal in docs/design.md (checked by libs:testing SloCoverageTest).
+rule_files:
+  - /etc/prometheus/alerts.yml
+
 scrape_configs:
   - job_name: prometheus
     static_configs:

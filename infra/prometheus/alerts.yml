@@ -1,0 +1,73 @@
+# Alerts for every signal in the design's "Signals" table (docs/design.md). Each rule carries
+# `signal: <the table's signal name>`; libs:testing SloCoverageTest fails if a row has no rule.
+# Meters marked (emitted) exist today; the others are the names services must still emit.
+groups:
+  - name: billing-slos
+    rules:
+      - alert: AdmissionLatencyLease
+        # admission_latency_seconds{path} histogram, gateway hosts.
+        expr: histogram_quantile(0.99, sum by (le) (rate(admission_latency_seconds_bucket{path="lease"}[5m]))) > 0.001
+        for: 10m
+        labels: {severity: page, signal: "Added admission latency, LEASE"}
+      - alert: AdmissionLatencyDirect
+        expr: histogram_quantile(0.99, sum by (le) (rate(admission_latency_seconds_bucket{path="direct"}[5m]))) > 0.005
+        for: 10m
+        labels: {severity: page, signal: "Added admission latency, DIRECT"}
+      - alert: OverdraftNearBound
+        # overdraft_ratio = overdraft / O_max(a), per org, from the shard.
+        expr: max by (org) (overdraft_ratio) > 0.5
+        labels: {severity: page, signal: "Overdraft per account"}
+      - alert: FalseDenials
+        expr: sum(rate(false_denials_total[1h])) / sum(rate(admissions_total[1h])) > 0.0001
+        for: 30m
+        labels: {severity: ticket, signal: "False denials"}
+      - alert: TopUpToResumeSlow
+        expr: histogram_quantile(0.99, sum by (le) (rate(topup_resume_seconds_bucket[15m]))) > 5
+        for: 15m
+        labels: {severity: page, signal: "Top-up to resume"}
+      - alert: IngestFreshness
+        expr: histogram_quantile(0.99, sum by (le) (rate(ingest_freshness_seconds_bucket[5m]))) > 60
+        for: 10m
+        labels: {severity: page, signal: "Ingest freshness"}
+      - alert: EdgeSpoolNotEmpty
+        # usage_spool_depth{spool="usage|control"} (emitted by services:inference-sim).
+        expr: max by (instance, spool) (usage_spool_depth) > 0
+        for: 10m
+        labels: {severity: page, signal: "Edge spool depth"}
+      - alert: DlqEventTooOld
+        expr: max(usage_dlq_oldest_age_seconds) > 3600
+        labels: {severity: page, signal: "DLQ age"}
+      - alert: UnknownSkuResolution
+        expr: increase(usage_unknown_sku_total[5m]) > 0
+        labels: {severity: page, signal: "Unknown-SKU resolutions"}
+      - alert: RealtimeRatedDrift
+        # |recognized - rated| / rated per account-hour, from the true-up job, before the true-up.
+        expr: max by (org) (realtime_rated_drift_ratio) > 0.001
+        labels: {severity: ticket, signal: "Real-time vs rated drift"}
+      - alert: CompletenessDrift
+        # Requests re-emitted by the completeness loop for closed periods (must be zero).
+        expr: max(completeness_drift{period_state="closed"}) > 0
+        labels: {severity: page, signal: "Completeness drift"}
+      - alert: TierTrueUpNonZero
+        # Rerater.trueUp at close: posted cents minus a from-scratch rating, per org.
+        expr: max by (org) (abs(tier_trueup_cents)) > 0
+        labels: {severity: page, signal: "Tier true-up at close"}
+      - alert: StripeLinesUnacknowledged
+        expr: max(stripe_push_unacked_lines{stage="before_finalize"}) > 0
+        labels: {severity: page, signal: "Stripe push"}
+      - alert: PeriodCloseLate
+        expr: max(period_close_overdue_seconds) > 0
+        labels: {severity: page, signal: "Period close"}
+      - alert: FailOpenSpendReport
+        # Not a page: Finance owns the daily report of spend admitted under fail-open.
+        expr: sum(increase(fail_open_spend_cents_total[1d])) > 0
+        labels: {severity: report, signal: "Fail-open spend"}
+      - alert: StrandedCreditOld
+        expr: max(stranded_credit_oldest_age_seconds) > 3600
+        labels: {severity: page, signal: "Stranded credit"}
+      - alert: ModeChurn
+        # Mode switches per account per hour (shard). With 60 s / 120 s hysteresis, more than a
+        # few per hour means the hysteresis is not working.
+        expr: max by (org) (increase(budget_mode_switches_total[1h])) > 6
+        for: 1h
+        labels: {severity: ticket, signal: "Mode churn"}
