@@ -39,7 +39,8 @@ class AdmissionBenchmarkTest {
     Collection<RunResult> results = new Runner(options).run();
     double nanos = results.iterator().next().getPrimaryResult().getScore();
     System.out.printf("AdmissionBenchmark.admitFromLease: %.1f ns/op%n", nanos);
-    // "Well under": a quarter of the 1 µs budget, leaving room for slower CI machines.
-    assertThat(nanos).isLessThan(250.0);
+    // "Well under": half the 1 µs budget. Measured about 150 ns alone and about 280 ns while other
+    // modules build in parallel, so a tighter bound only measures machine load.
+    assertThat(nanos).isLessThan(500.0);
   }
 }
