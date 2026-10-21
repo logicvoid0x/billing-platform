@@ -1,0 +1,80 @@
+// Catalog snapshot served by services:catalog (GET /v1/catalog/snapshot?hour=) to services that
+// rate or resolve usage outside the catalog (open question Q7, option: HTTP snapshot).
+// Amounts are int64 cents over int64 units (Cents.Rate); never decimals. Field numbers are never
+// reused.
+syntax = "proto3";
+
+package billing.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_package = "com.logicvoid0x.billing.contracts.v1";
+option java_outer_classname = "CatalogProto";
+
+// Every catalog row in effect at any time during one hour, and the catalog version they belong to.
+message CatalogSnapshot {
+  string version = 1;                     // "catalog-vN"; recorded on rated rows
+  google.protobuf.Timestamp hour = 2;     // start of the hour the snapshot covers
+  repeated CatalogSku skus = 3;
+  repeated CatalogBandRule band_rules = 4;
+  repeated CatalogListPrice list_prices = 5;
+  repeated CatalogContractPrice contract_prices = 6;
+  repeated CatalogWeight weights = 7;
+}
+
+// [from, until); until unset means open-ended.
+message CatalogPeriod {
+  google.protobuf.Timestamp from = 1;
+  google.protobuf.Timestamp until = 2;
+}
+
+message CatalogSku {
+  string sku_id = 1;
+  string sku_key = 2;
+  string meter_code = 3;                  // permanent meter code string
+  string model = 4;
+  string service_tier = 5;
+  string context_band = 6;
+  CatalogPeriod effective = 7;
+}
+
+message CatalogBandRule {
+  string model = 1;
+  int64 threshold_tokens = 2;
+  string base_band = 3;
+  string above_band = 4;
+  CatalogPeriod effective = 5;
+}
+
+// rate_cents per per_units for units below up_to (cumulative, exclusive).
+message CatalogTier {
+  int64 up_to = 1;                        // 0 = open-ended last tier
+  int64 rate_cents = 2;
+  int64 per_units = 3;
+}
+
+// One tier with up_to = 0 is flat pricing; anything else is graduated.
+message CatalogPricing {
+  repeated CatalogTier tiers = 1;
+}
+
+message CatalogListPrice {
+  string sku_id = 1;
+  CatalogPricing pricing = 2;
+  CatalogPeriod effective = 3;
+}
+
+message CatalogContractPrice {
+  string org_id = 1;
+  string sku_id = 2;
+  CatalogPricing pricing = 3;
+  CatalogPeriod effective = 4;
+}
+
+message CatalogWeight {
+  string sku_id = 1;
+  int64 units = 2;
+  int64 per_tokens = 3;
+  CatalogPeriod effective = 4;
+}
