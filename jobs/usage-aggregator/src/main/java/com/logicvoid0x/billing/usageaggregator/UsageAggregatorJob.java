@@ -116,13 +116,32 @@ public final class UsageAggregatorJob {
         .uid("usage-hourly");
   }
 
-  /** Submits the job: {@code <bootstrap-servers>}. */
+  /** Environment variable holding the metering database password (kept out of the job args). */
+  public static final String DB_PASSWORD_ENV = "METERING_DB_PASSWORD";
+
+  /**
+   * Submits the job: {@code <bootstrap-servers> <catalog-url> <metering-jdbc-url> <db-user>}; the
+   * password comes from {@link #DB_PASSWORD_ENV}. SKUs resolve through the catalog snapshot API.
+   */
   public static void main(String[] args) throws Exception {
-    if (args.length != 1) {
-      throw new IllegalArgumentException("usage: UsageAggregatorJob <bootstrap-servers>");
+    if (args.length != 4) {
+      throw new IllegalArgumentException(
+          "usage: UsageAggregatorJob <bootstrap-servers> <catalog-url> <metering-jdbc-url>"
+              + " <db-user>  (password in "
+              + DB_PASSWORD_ENV
+              + ")");
     }
-    // How the job reads the catalog is open question Q7; until then it cannot be submitted.
-    throw new UnsupportedOperationException(
-        "no catalog RatingSource for the deployed job yet (open question Q7)");
+    String password = System.getenv(DB_PASSWORD_ENV);
+    if (password == null) {
+      throw new IllegalArgumentException(DB_PASSWORD_ENV + " is not set");
+    }
+    StreamExecutionEnvironment env =
+        StreamExecutionEnvironment.getExecutionEnvironment(stateConfig());
+    build(
+        env,
+        args[0],
+        new HttpRatingSource(args[1], "rating-1"),
+        new Jdbc(args[2], args[3], password));
+    env.execute(jobName());
   }
 }

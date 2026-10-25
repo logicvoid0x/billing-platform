@@ -9,7 +9,7 @@ rootProject.name = "billing-platform"
 
 include(
     "libs:money", "libs:domain", "libs:contracts", "libs:rating", "libs:admission", "libs:testing",
-    "libs:usage-connect", "libs:catalog-client",
+    "libs:usage-connect",
     "services:catalog", "services:budget-shard", "services:balance-ledger", "services:gateway",
     "services:inference-sim", "services:rating-engine", "services:reconciliation",
     "services:invoicing", "services:payments", "services:usage-view",

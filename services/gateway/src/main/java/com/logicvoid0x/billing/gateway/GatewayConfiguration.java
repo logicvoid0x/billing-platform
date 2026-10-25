@@ -3,6 +3,7 @@ package com.logicvoid0x.billing.gateway;
 import com.logicvoid0x.billing.admission.AdmissionController;
 import com.logicvoid0x.billing.admission.BudgetResolver;
 import com.logicvoid0x.billing.admission.ModeCache;
+import com.logicvoid0x.billing.contracts.catalog.HttpCatalogClient;
 import com.logicvoid0x.billing.contracts.v1.BudgetShardGrpc;
 import com.logicvoid0x.billing.rating.RatingLibrary;
 import io.grpc.ManagedChannel;
@@ -20,18 +21,25 @@ import org.springframework.context.annotation.Configuration;
 
 /**
  * Wires the gateway when {@code gateway.enabled=true}: gRPC to the regional shard, HTTP to the
- * inference host, Kafka for settle records and the gateway log. The rating library has no deployed
- * source yet (open question Q7), so enabling fails fast until one is provided.
+ * inference host, Kafka for settle records and the gateway log, and the catalog's snapshot API for
+ * the rating library (Q7).
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(GatewaySettings.class)
 @ConditionalOnProperty(name = "gateway.enabled", havingValue = "true")
 public class GatewayConfiguration {
-  /** Rating libraries by time; there is no deployed catalog source yet. */
+  /** Rating libraries by time, from the catalog service; cached per hour, re-checked every 30 s. */
   @Bean
-  Function<Instant, RatingLibrary> gatewayRatings() {
-    throw new IllegalStateException(
-        "gateway.enabled needs a catalog source for the rating library (open question Q7)");
+  Function<Instant, RatingLibrary> gatewayRatings(GatewaySettings s) {
+    HttpCatalogClient catalog =
+        new HttpCatalogClient(
+            URI.create(s.catalogUrl()),
+            Duration.ofSeconds(2),
+            Duration.ofSeconds(30),
+            "rating-1",
+            48,
+            Clock.systemUTC());
+    return catalog::at;
   }
 
   /** Channel to the regional budget shard. */

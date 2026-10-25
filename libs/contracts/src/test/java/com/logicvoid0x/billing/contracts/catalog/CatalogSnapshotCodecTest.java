@@ -1,4 +1,4 @@
-package com.logicvoid0x.billing.catalogclient;
+package com.logicvoid0x.billing.contracts.catalog;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

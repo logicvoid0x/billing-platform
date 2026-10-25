@@ -5,7 +5,7 @@ plugins {
 
 dependencies {
     implementation(project(":libs:rating"))
-    implementation(project(":libs:catalog-client")) // snapshot wire codec (Q7)
+    implementation(project(":libs:contracts")) // catalog snapshot codec (Q7)
     implementation(libs.spring.boot.starter.webmvc) // versions from the Spring Boot BOM
     implementation(libs.spring.boot.starter.jdbc)
     implementation(libs.flyway.core)

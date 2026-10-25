@@ -1,4 +1,4 @@
-package com.logicvoid0x.billing.catalogclient;
+package com.logicvoid0x.billing.contracts.catalog;
 
 import com.google.protobuf.Timestamp;
 import com.logicvoid0x.billing.contracts.v1.CatalogBandRule;

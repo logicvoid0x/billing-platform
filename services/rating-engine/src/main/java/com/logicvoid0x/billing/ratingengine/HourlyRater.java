@@ -33,7 +33,7 @@ import javax.sql.DataSource;
  * the ledger key.
  */
 public final class HourlyRater {
-  /** Rating library in effect at an hour (catalog access is open question Q7). */
+  /** Rating library in effect at an hour; deployed, it is {@code HttpCatalogClient::at} (Q7). */
   @FunctionalInterface
   public interface Libraries {
     /** The library for {@code hour}. */

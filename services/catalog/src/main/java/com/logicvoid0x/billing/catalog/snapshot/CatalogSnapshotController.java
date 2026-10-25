@@ -1,8 +1,8 @@
 package com.logicvoid0x.billing.catalog.snapshot;
 
 import com.logicvoid0x.billing.catalog.store.CatalogStore;
-import com.logicvoid0x.billing.catalogclient.CatalogSnapshotCodec;
-import com.logicvoid0x.billing.catalogclient.HttpCatalogClient;
+import com.logicvoid0x.billing.contracts.catalog.CatalogSnapshotCodec;
+import com.logicvoid0x.billing.contracts.catalog.HttpCatalogClient;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import org.springframework.http.MediaType;

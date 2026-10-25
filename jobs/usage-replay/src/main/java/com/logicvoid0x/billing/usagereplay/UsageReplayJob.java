@@ -4,16 +4,23 @@ import com.logicvoid0x.billing.contracts.codec.UsageEventCodec;
 import com.logicvoid0x.billing.domain.MeterCode;
 import com.logicvoid0x.billing.domain.RequestUsage;
 import com.logicvoid0x.billing.usageaggregator.HourlyUsage;
+import com.logicvoid0x.billing.usageaggregator.HttpRatingSource;
 import com.logicvoid0x.billing.usageaggregator.RatingSource;
 import com.logicvoid0x.billing.usageaggregator.RawUsage;
 import com.logicvoid0x.billing.usageaggregator.UsageAggregatorJob;
 import com.logicvoid0x.billing.usageaggregator.sink.Jdbc;
+import java.io.IOException;
+import java.io.Reader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import org.apache.flink.api.common.RuntimeExecutionMode;
@@ -25,8 +32,10 @@ import org.apache.flink.table.data.ArrayData;
 import org.apache.flink.table.data.MapData;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.runtime.typeutils.InternalTypeInfo;
+import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.expressions.Expression;
 import org.apache.iceberg.expressions.Expressions;
+import org.apache.iceberg.flink.CatalogLoader;
 import org.apache.iceberg.flink.FlinkSchemaUtil;
 import org.apache.iceberg.flink.TableLoader;
 import org.apache.iceberg.flink.source.IcebergSource;
@@ -167,12 +176,62 @@ public final class UsageReplayJob {
     return new RawUsage(UsageEventCodec.encode(usage), "billing.usage_raw", -1, -1);
   }
 
-  /** Submits the job: {@code <replay-id> <hour>...}; waits on the catalog question (Q7). */
-  public static void main(String[] args) {
-    if (args.length < 2) {
-      throw new IllegalArgumentException("usage: UsageReplayJob <replay-id> <hour>...");
+  /** The archive table written by the Iceberg sink connector. */
+  public static final TableIdentifier ARCHIVE_TABLE = TableIdentifier.of("billing", "usage_raw");
+
+  /**
+   * Submits the job: {@code <replay-id> <catalog-url> <metering-jdbc-url> <db-user>
+   * <iceberg-properties> <hour>...}. The password comes from {@link
+   * UsageAggregatorJob#DB_PASSWORD_ENV}; the properties file configures the Iceberg REST catalog of
+   * the archive (keys as in infra/replay/iceberg-local.properties). SKUs resolve through the
+   * catalog snapshot API (Q7).
+   */
+  public static void main(String[] args) throws Exception {
+    if (args.length < 6) {
+      throw new IllegalArgumentException(
+          "usage: UsageReplayJob <replay-id> <catalog-url> <metering-jdbc-url> <db-user>"
+              + " <iceberg-properties> <hour>...  (password in "
+              + UsageAggregatorJob.DB_PASSWORD_ENV
+              + ")");
     }
-    throw new UnsupportedOperationException(
-        "no catalog RatingSource for the deployed job yet (open question Q7)");
+    String password = System.getenv(UsageAggregatorJob.DB_PASSWORD_ENV);
+    if (password == null) {
+      throw new IllegalArgumentException(UsageAggregatorJob.DB_PASSWORD_ENV + " is not set");
+    }
+    SortedSet<Instant> hours = new TreeSet<>();
+    for (int i = 5; i < args.length; i++) {
+      hours.add(Instant.parse(args[i]));
+    }
+    TableLoader archive =
+        TableLoader.fromCatalog(
+            CatalogLoader.rest(
+                "archive", new org.apache.hadoop.conf.Configuration(), icebergProperties(args[4])),
+            ARCHIVE_TABLE);
+    int rows =
+        replay(
+            StreamExecutionEnvironment.getExecutionEnvironment(),
+            archive,
+            hours,
+            Instant.now(),
+            new HttpRatingSource(args[1], "rating-1"),
+            new Jdbc(args[2], args[3], password),
+            args[0]);
+    System.out.println("replay " + args[0] + ": " + rows + " usage_hourly rows for " + hours);
+  }
+
+  /** Iceberg catalog properties from a {@code .properties} file. */
+  static Map<String, String> icebergProperties(String file) throws IOException {
+    Properties p = new Properties();
+    try (Reader in = Files.newBufferedReader(Path.of(file), StandardCharsets.UTF_8)) {
+      p.load(in);
+    }
+    Map<String, String> out = new LinkedHashMap<>();
+    for (String key : p.stringPropertyNames()) {
+      out.put(key, p.getProperty(key));
+    }
+    if (!out.containsKey("uri")) {
+      throw new IllegalArgumentException(file + " has no Iceberg REST catalog 'uri'");
+    }
+    return out;
   }
 }

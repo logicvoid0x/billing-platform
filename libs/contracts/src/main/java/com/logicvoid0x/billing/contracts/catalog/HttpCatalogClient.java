@@ -1,4 +1,4 @@
-package com.logicvoid0x.billing.catalogclient;
+package com.logicvoid0x.billing.contracts.catalog;
 
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.logicvoid0x.billing.contracts.v1.CatalogSnapshot;

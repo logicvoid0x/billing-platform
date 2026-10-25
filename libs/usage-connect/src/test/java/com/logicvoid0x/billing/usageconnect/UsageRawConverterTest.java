@@ -7,6 +7,7 @@ import com.google.protobuf.Timestamp;
 import com.logicvoid0x.billing.contracts.v1.RequestUsageEvent;
 import java.util.Date;
 import java.util.Map;
+import java.util.TreeMap;
 import org.apache.kafka.connect.data.SchemaAndValue;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.DataException;
@@ -42,7 +43,8 @@ class UsageRawConverterTest {
     assertThat(row.getString("org_id")).isEqualTo("org_acme");
     assertThat(row.get("event_time")).isEqualTo(new Date(1_793_527_200_123L));
     assertThat(row.getMap("quantities"))
-        .containsExactlyEntriesOf(Map.of("input_tokens", 1_200L, "output_tokens", 40_000_000L));
+        .containsExactlyEntriesOf(
+            new TreeMap<>(Map.of("input_tokens", 1_200L, "output_tokens", 40_000_000L)));
   }
 
   @Test

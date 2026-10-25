@@ -1,4 +1,4 @@
-package com.logicvoid0x.billing.catalogclient;
+package com.logicvoid0x.billing.contracts.catalog;
 
 /** The catalog service could not be reached or did not return a usable snapshot. */
 public final class CatalogUnavailableException extends RuntimeException {

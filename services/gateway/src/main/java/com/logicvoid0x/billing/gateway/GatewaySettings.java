@@ -5,7 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * Gateway settings ({@code gateway.*}).
  *
- * @param enabled wire the request path; off until the catalog source is decided (Q7)
+ * @param enabled wire the request path (needs the shard, Kafka, the inference host and the catalog)
  * @param hostId this gateway host
  * @param homeRegion region recorded on settle records
  * @param shardTarget gRPC target of the regional budget shard
@@ -13,6 +13,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param kafkaBootstrapServers Kafka for budget.settle and gateway.log
  * @param perMinute per-API-key requests per minute
  * @param chunkTokens output tokens per funded chunk
+ * @param catalogUrl base URL of the catalog service (snapshot API, Q7)
  */
 @ConfigurationProperties("gateway")
 public record GatewaySettings(
@@ -23,4 +24,5 @@ public record GatewaySettings(
     String upstreamUrl,
     String kafkaBootstrapServers,
     long perMinute,
-    long chunkTokens) {}
+    long chunkTokens,
+    String catalogUrl) {}

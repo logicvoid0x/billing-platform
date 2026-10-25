@@ -3,7 +3,7 @@ package com.logicvoid0x.billing.catalog.snapshot;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.logicvoid0x.billing.catalog.store.CatalogStore;
-import com.logicvoid0x.billing.catalogclient.HttpCatalogClient;
+import com.logicvoid0x.billing.contracts.catalog.HttpCatalogClient;
 import com.logicvoid0x.billing.money.Cents.Rate;
 import com.logicvoid0x.billing.rating.EffectivePeriod;
 import com.logicvoid0x.billing.rating.ListPrice;
