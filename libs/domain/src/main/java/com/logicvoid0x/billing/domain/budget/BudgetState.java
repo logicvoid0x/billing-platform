@@ -6,6 +6,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -50,6 +51,31 @@ public final class BudgetState {
   /** Default max request duration (10 min) plus grace (1 min) before a hold auto-settles. */
   public static final long DEFAULT_MAX_HOLD_MILLIS = 660_000;
 
+  /** Gateway lease time-to-live (about 2 s of host burn); unreported leases expire after it. */
+  public static final long LEASE_TTL_MILLIS = 2_000;
+
+  /** One granted lease, open until reported or forgotten. */
+  private static final class Lease {
+    final long amount;
+    final long expiresAtMillis;
+    // Charged in full at its TTL; a late report posts only the difference.
+    boolean expired;
+
+    Lease(long amount, long expiresAtMillis) {
+      this.amount = amount;
+      this.expiresAtMillis = expiresAtMillis;
+    }
+  }
+
+  /** A host's leases on one budget. */
+  private static final class HostLeases {
+    long lastId;
+    final Map<Long, Lease> open = new TreeMap<>();
+  }
+
+  /** A report already applied: replays return it. */
+  private record AppliedReport(long spent, long unused, long released, long atMillis) {}
+
   private final long minHold;
   private final long maxHoldMillis;
   private final ModePolicy policy;
@@ -58,7 +84,10 @@ public final class BudgetState {
   private long nowMillis;
   private final Map<String, Account> accounts = new TreeMap<>();
   private final Map<String, Reservation> reservations = new TreeMap<>();
-  private final Map<String, Map<String, Long>> leases = new HashMap<>();
+  // hostId -> budgetId -> leases
+  private final Map<String, Map<String, HostLeases>> leases = new TreeMap<>();
+  // host, budget, lease id -> applied report
+  private final Map<String, AppliedReport> leaseReports = new TreeMap<>();
   // requestId:sequence -> (payload, result): replays return the first result.
   private final Map<String, Object[]> applied = new HashMap<>();
   private long lastRollupEndMillis;
@@ -116,7 +145,36 @@ public final class BudgetState {
         r.autoSettled = true;
       }
     }
+    expireLeases();
     accounts.values().forEach(this::reevaluate);
+  }
+
+  /**
+   * Charges unreported leases in full at their TTL (the host is presumed gone, as for holds), so no
+   * lease strands credit as leased for longer than one TTL. Expired leases and applied reports are
+   * forgotten after the max hold time; a report that late is answered as unknown and left to
+   * reconciliation.
+   */
+  private void expireLeases() {
+    leases
+        .values()
+        .forEach(byBudget ->
+            byBudget.forEach((budgetId, hl) -> {
+              Iterator<Lease> it = hl.open.values().iterator();
+              while (it.hasNext()) {
+                Lease l = it.next();
+                if (!l.expired && nowMillis >= l.expiresAtMillis) {
+                  Account a = account(budgetId);
+                  a.leased -= l.amount;
+                  charge(a, l.amount);
+                  l.expired = true;
+                }
+                if (l.expired && nowMillis - l.expiresAtMillis >= maxHoldMillis) {
+                  it.remove();
+                }
+              }
+            }));
+    leaseReports.values().removeIf(r -> nowMillis - r.atMillis() >= maxHoldMillis);
   }
 
   /**
@@ -305,14 +363,59 @@ public final class BudgetState {
     Objects.requireNonNull(hostId, "hostId");
     requireNonNegative(requested);
     if (requestEpoch < epoch) {
-      return new LeaseGrant(0, epoch, true);
+      return new LeaseGrant(0, epoch, true, 0);
     }
     Account a = account(budgetId);
     long granted = Math.max(0, Math.min(requested, available(a)));
+    if (granted == 0) {
+      return new LeaseGrant(0, epoch, false, 0);
+    }
     a.leased = Math.addExact(a.leased, granted);
-    leases.computeIfAbsent(hostId, h -> new TreeMap<>()).merge(budgetId, granted, Math::addExact);
+    HostLeases hl =
+        leases
+            .computeIfAbsent(hostId, h -> new TreeMap<>())
+            .computeIfAbsent(budgetId, b -> new HostLeases());
+    long leaseId = ++hl.lastId;
+    hl.open.put(leaseId, new Lease(granted, nowMillis + LEASE_TTL_MILLIS));
     reevaluate(a);
-    return new LeaseGrant(granted, epoch, false);
+    return new LeaseGrant(granted, epoch, false, leaseId);
+  }
+
+  /** See {@link BudgetStore#reportLease}. */
+  public LeaseReport reportLease(
+      String hostId, String budgetId, long leaseId, long spent, long unused) {
+    Objects.requireNonNull(hostId, "hostId");
+    requireNonNegative(spent);
+    requireNonNegative(unused);
+    Account a = account(budgetId);
+    String key = hostId + '\u0000' + budgetId + '\u0000' + leaseId;
+    AppliedReport seen = leaseReports.get(key);
+    if (seen != null) {
+      if (seen.spent() != spent || seen.unused() != unused) {
+        throw new IllegalArgumentException(
+            "lease " + leaseId + " of " + hostId + " already reported with other amounts");
+      }
+      return new LeaseReport(LeaseReport.Status.REPORTED, seen.released());
+    }
+    HostLeases hl = leases.getOrDefault(hostId, Map.of()).get(budgetId);
+    Lease l = hl == null ? null : hl.open.get(leaseId);
+    if (l == null) {
+      return new LeaseReport(LeaseReport.Status.UNKNOWN_LEASE, 0);
+    }
+    if (Math.addExact(spent, unused) != l.amount) {
+      throw new IllegalArgumentException(
+          "spent + unused must add up to the granted " + l.amount + " of lease " + leaseId);
+    }
+    if (l.expired) {
+      charge(a, spent - l.amount); // charged in full at expiry: post the correction
+    } else {
+      a.leased -= l.amount;
+      charge(a, spent);
+    }
+    hl.open.remove(leaseId);
+    leaseReports.put(key, new AppliedReport(spent, unused, unused, nowMillis));
+    reevaluate(a);
+    return new LeaseReport(LeaseReport.Status.REPORTED, unused);
   }
 
   /**
@@ -402,7 +505,7 @@ public final class BudgetState {
 
   // ------------------------------------------------------------------ snapshots
 
-  private static final int SNAPSHOT_FORMAT = 4;
+  private static final int SNAPSHOT_FORMAT = 5;
   private static final byte RESERVE_RESULT = 1;
   private static final byte SETTLE_RESULT = 2;
 
@@ -443,11 +546,29 @@ public final class BudgetState {
       out.writeLong(e.getValue().openedAtMillis);
       writeAmounts(out, e.getValue().held);
     }
-    Map<String, Map<String, Long>> sortedLeases = new TreeMap<>(leases);
-    out.writeInt(sortedLeases.size());
-    for (Map.Entry<String, Map<String, Long>> e : sortedLeases.entrySet()) {
+    out.writeInt(leases.size());
+    for (Map.Entry<String, Map<String, HostLeases>> host : leases.entrySet()) {
+      out.writeUTF(host.getKey());
+      out.writeInt(host.getValue().size());
+      for (Map.Entry<String, HostLeases> budget : host.getValue().entrySet()) {
+        out.writeUTF(budget.getKey());
+        out.writeLong(budget.getValue().lastId);
+        out.writeInt(budget.getValue().open.size());
+        for (Map.Entry<Long, Lease> l : budget.getValue().open.entrySet()) {
+          out.writeLong(l.getKey());
+          out.writeLong(l.getValue().amount);
+          out.writeLong(l.getValue().expiresAtMillis);
+          out.writeBoolean(l.getValue().expired);
+        }
+      }
+    }
+    out.writeInt(leaseReports.size());
+    for (Map.Entry<String, AppliedReport> e : leaseReports.entrySet()) {
       out.writeUTF(e.getKey());
-      writeAmounts(out, e.getValue());
+      out.writeLong(e.getValue().spent());
+      out.writeLong(e.getValue().unused());
+      out.writeLong(e.getValue().released());
+      out.writeLong(e.getValue().atMillis());
     }
     Map<String, Object[]> sortedApplied = new TreeMap<>(applied);
     out.writeInt(sortedApplied.size());
@@ -517,8 +638,24 @@ public final class BudgetState {
       s.reservations.put(id, r);
     }
     for (int i = in.readInt(); i > 0; i--) {
-      String host = in.readUTF();
-      s.leases.put(host, new TreeMap<>(readAmounts(in)));
+      Map<String, HostLeases> byBudget = new TreeMap<>();
+      s.leases.put(in.readUTF(), byBudget);
+      for (int j = in.readInt(); j > 0; j--) {
+        HostLeases hl = new HostLeases();
+        byBudget.put(in.readUTF(), hl);
+        hl.lastId = in.readLong();
+        for (int k = in.readInt(); k > 0; k--) {
+          long id = in.readLong();
+          Lease l = new Lease(in.readLong(), in.readLong());
+          l.expired = in.readBoolean();
+          hl.open.put(id, l);
+        }
+      }
+    }
+    for (int i = in.readInt(); i > 0; i--) {
+      s.leaseReports.put(
+          in.readUTF(),
+          new AppliedReport(in.readLong(), in.readLong(), in.readLong(), in.readLong()));
     }
     for (int i = in.readInt(); i > 0; i--) {
       String key = in.readUTF();

@@ -3,6 +3,7 @@ package com.logicvoid0x.billing.budgetshard.ratis;
 import com.logicvoid0x.billing.domain.Mode;
 import com.logicvoid0x.billing.domain.budget.BudgetBalance;
 import com.logicvoid0x.billing.domain.budget.LeaseGrant;
+import com.logicvoid0x.billing.domain.budget.LeaseReport;
 import com.logicvoid0x.billing.domain.budget.ModeSnapshot;
 import com.logicvoid0x.billing.domain.budget.ReserveResult;
 import com.logicvoid0x.billing.domain.budget.Rollup;
@@ -37,6 +38,7 @@ public final class ShardCodec {
     TICK(8),
     ROLLUP(9),
     ADJUST(10),
+    REPORT_LEASE(11),
     QUERY_BALANCE(20),
     QUERY_MODES(21);
 
@@ -157,7 +159,21 @@ public final class ShardCodec {
       out.writeLong(g.granted());
       out.writeLong(g.epoch());
       out.writeBoolean(g.staleEpoch());
+      out.writeLong(g.leaseId());
     });
+  }
+
+  static byte[] leaseReport(LeaseReport r) {
+    return write(out -> {
+      out.writeByte(OK);
+      out.writeUTF(r.status().code());
+      out.writeLong(r.released());
+    });
+  }
+
+  static LeaseReport readLeaseReport(byte[] bytes) {
+    return read(
+        bytes, in -> new LeaseReport(LeaseReport.Status.fromCode(in.readUTF()), in.readLong()));
   }
 
   static byte[] balance(BudgetBalance b) {
@@ -204,7 +220,8 @@ public final class ShardCodec {
   }
 
   static LeaseGrant readLeaseGrant(byte[] bytes) {
-    return read(bytes, in -> new LeaseGrant(in.readLong(), in.readLong(), in.readBoolean()));
+    return read(
+        bytes, in -> new LeaseGrant(in.readLong(), in.readLong(), in.readBoolean(), in.readLong()));
   }
 
   static BudgetBalance readBalance(byte[] bytes) {

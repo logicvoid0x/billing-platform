@@ -1,6 +1,8 @@
 package com.logicvoid0x.billing.gateway;
 
 import com.logicvoid0x.billing.contracts.v1.BudgetShardGrpc;
+import com.logicvoid0x.billing.contracts.v1.LeaseReportRequest;
+import com.logicvoid0x.billing.contracts.v1.LeaseReportResponse;
 import com.logicvoid0x.billing.contracts.v1.LeaseRequest;
 import com.logicvoid0x.billing.contracts.v1.ModesRequest;
 import com.logicvoid0x.billing.contracts.v1.ReserveRequest;
@@ -10,6 +12,7 @@ import com.logicvoid0x.billing.contracts.v1.SettleResponse;
 import com.logicvoid0x.billing.domain.Mode;
 import com.logicvoid0x.billing.domain.budget.BudgetStore;
 import com.logicvoid0x.billing.domain.budget.LeaseGrant;
+import com.logicvoid0x.billing.domain.budget.LeaseReport;
 import com.logicvoid0x.billing.domain.budget.ModeSnapshot;
 import com.logicvoid0x.billing.domain.budget.ReserveResult;
 import com.logicvoid0x.billing.domain.budget.SettleResult;
@@ -75,7 +78,23 @@ public final class GrpcBudgetStore implements BudgetStore {
                     .setRequested(requested)
                     .setEpoch(epoch)
                     .build());
-    return new LeaseGrant(g.getGranted(), g.getEpoch(), g.getTtlMillis() == 0);
+    return new LeaseGrant(g.getGranted(), g.getEpoch(), g.getTtlMillis() == 0, g.getLeaseId());
+  }
+
+  @Override
+  public LeaseReport reportLease(
+      String hostId, String budgetId, long leaseId, long spent, long unused) {
+    LeaseReportResponse r =
+        call()
+            .reportLease(
+                LeaseReportRequest.newBuilder()
+                    .setHostId(hostId)
+                    .setBudgetId(budgetId)
+                    .setLeaseId(leaseId)
+                    .setSpent(spent)
+                    .setUnused(unused)
+                    .build());
+    return new LeaseReport(LeaseReport.Status.fromCode(r.getStatus()), r.getReleased());
   }
 
   @Override

@@ -12,6 +12,8 @@ import com.logicvoid0x.billing.contracts.v1.BudgetShardGrpc;
 import com.logicvoid0x.billing.domain.BudgetKind;
 import com.logicvoid0x.billing.domain.FailPolicy;
 import com.logicvoid0x.billing.domain.budget.InMemoryBudgetStore;
+import com.logicvoid0x.billing.domain.budget.LeaseGrant;
+import com.logicvoid0x.billing.domain.budget.LeaseReport;
 import com.logicvoid0x.billing.domain.budget.ReserveResult;
 import com.logicvoid0x.billing.rating.CatalogRatingLibrary;
 import com.logicvoid0x.billing.rating.golden.GoldenCases;
@@ -69,6 +71,21 @@ class GrpcBudgetStoreTest {
     assertThat(store.settle("req_1", 2, Map.of(BAL, 420L)).released()).containsEntry(BAL, 80L);
     assertThat(shard.balance(BAL).spent()).isEqualTo(420);
     assertThat(store.modes("org_acme").modeByBudget()).containsKey(BAL);
+  }
+
+  @Test
+  void leasesAreGrantedAndReportedOverGrpc() {
+    shard.open(BAL, "org_acme", 1_000);
+    LeaseGrant g = store.grantLease("gw-1", BAL, 600, 0);
+    assertThat(g.leaseId()).isPositive();
+    LeaseReport r = store.reportLease("gw-1", BAL, g.leaseId(), 100, 500);
+    assertThat(r.status()).isEqualTo(LeaseReport.Status.REPORTED);
+    assertThat(r.released()).isEqualTo(500);
+    assertThat(store.reportLease("gw-1", BAL, g.leaseId(), 100, 500)).as("replay").isEqualTo(r);
+    assertThat(shard.balance(BAL).spent()).isEqualTo(100);
+    assertThat(shard.balance(BAL).leased()).isZero();
+    assertThat(store.reportLease("gw-1", BAL, 99, 0, 0).status())
+        .isEqualTo(LeaseReport.Status.UNKNOWN_LEASE);
   }
 
   @Test

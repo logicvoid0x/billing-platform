@@ -15,6 +15,8 @@ service BudgetShard {
   // Settles at `actual` and releases the rest of the hold.
   rpc Settle(SettleRequest) returns (SettleResponse);
   rpc GrantLease(LeaseRequest) returns (LeaseGrant);
+  // Closes one lease: spent is charged, unused released. Idempotent on (host_id, budget_id, lease_id).
+  rpc ReportLease(LeaseReportRequest) returns (LeaseReportResponse);
   rpc Modes(ModesRequest) returns (ModeSnapshot);
 }
 
@@ -63,6 +65,24 @@ message LeaseGrant {
   int64 ttl_millis = 3;
   // "lease" | "direct" | "deny"
   string mode = 4;
+  // Id of this lease on (host_id, budget_id), for ReportLease; 0 when nothing was granted.
+  int64 lease_id = 5;
+}
+
+message LeaseReportRequest {
+  string host_id = 1;
+  string budget_id = 2;
+  int64 lease_id = 3;
+  // spent + unused must equal the granted amount.
+  int64 spent = 4;
+  int64 unused = 5;
+}
+
+message LeaseReportResponse {
+  // "reported" | "unknown_lease"
+  string status = 1;
+  // Credit made available again.
+  int64 released = 2;
 }
 
 message ModesRequest {

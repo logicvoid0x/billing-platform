@@ -21,6 +21,14 @@ public interface BudgetStore {
   /** Grants a gateway host a lease of up to {@code requested}; stale epochs get nothing. */
   LeaseGrant grantLease(String hostId, String budgetId, long requested, long epoch);
 
+  /**
+   * Closes lease {@code leaseId} of {@code hostId} on {@code budgetId}: {@code spent} is charged
+   * and {@code unused} released. They must add up to the granted amount. Idempotent on host, budget
+   * and lease id; a lease left unreported is charged in full at its TTL, and a later report
+   * corrects that charge.
+   */
+  LeaseReport reportLease(String hostId, String budgetId, long leaseId, long spent, long unused);
+
   /** Current mode of each budget of the org. */
   ModeSnapshot modes(String orgId);
 }

@@ -147,6 +147,15 @@ public final class BudgetStateMachine extends BaseStateMachine {
         }
         case GRANT_LEASE ->
             ShardCodec.leaseGrant(state.grantLease(c.id(), c.other(), c.amount(), c.epoch()));
+        // id = host, other = budget, epoch = lease id, amount = spent, amounts = {unused}
+        case REPORT_LEASE ->
+            ShardCodec.leaseReport(
+                state.reportLease(
+                    c.id(),
+                    c.other(),
+                    c.epoch(),
+                    c.amount(),
+                    c.amounts().getOrDefault("unused", 0L)));
         case QUERY_BALANCE -> ShardCodec.balance(state.balance(c.id()));
         case QUERY_MODES -> ShardCodec.modes(state.modes(c.id()));
       };

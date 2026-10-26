@@ -7,6 +7,7 @@ import com.logicvoid0x.billing.domain.FailPolicy;
 import com.logicvoid0x.billing.domain.budget.BudgetStore;
 import com.logicvoid0x.billing.domain.budget.InMemoryBudgetStore;
 import com.logicvoid0x.billing.domain.budget.LeaseGrant;
+import com.logicvoid0x.billing.domain.budget.LeaseReport;
 import com.logicvoid0x.billing.domain.budget.ModeSnapshot;
 import com.logicvoid0x.billing.domain.budget.ReserveResult;
 import com.logicvoid0x.billing.domain.budget.SettleResult;
@@ -68,6 +69,13 @@ class AdmissionControllerTest {
     public LeaseGrant grantLease(String hostId, String budgetId, long requested, long epoch) {
       check();
       return inner.grantLease(hostId, budgetId, requested, epoch);
+    }
+
+    @Override
+    public LeaseReport reportLease(
+        String hostId, String budgetId, long leaseId, long spent, long unused) {
+      check();
+      return inner.reportLease(hostId, budgetId, leaseId, spent, unused);
     }
 
     @Override

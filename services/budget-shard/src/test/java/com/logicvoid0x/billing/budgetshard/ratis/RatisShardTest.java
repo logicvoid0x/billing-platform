@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.logicvoid0x.billing.domain.Mode;
+import com.logicvoid0x.billing.domain.budget.LeaseGrant;
+import com.logicvoid0x.billing.domain.budget.LeaseReport;
 import com.logicvoid0x.billing.domain.budget.Rollup;
 import com.logicvoid0x.billing.domain.budget.SettleResult;
 import java.io.IOException;
@@ -114,6 +116,39 @@ class RatisShardTest {
           .extracting(Rollup::amount)
           .containsExactly(120L);
       assertThat(store.rollup("us-east", 10_000L)).as("nothing settled since").isEmpty();
+    } finally {
+      restarted.server().close();
+    }
+  }
+
+  @Test
+  void leaseReportsApplyThroughTheLogAndReplaysAfterRestartChangeNothing() throws Exception {
+    RaftPeer peer = RaftPeer.newBuilder().setId("s0").setAddress("localhost:" + freePort()).build();
+    RaftGroup group = RaftGroup.valueOf(RaftGroupId.valueOf(UUID.randomUUID()), peer);
+
+    long leaseId;
+    Node node = start(group, peer, RaftStorage.StartupOption.FORMAT);
+    try (RatisBudgetStore store = node.client()) {
+      store.open(BALANCE, "org_42", 1_000);
+      LeaseGrant g = store.grantLease("host-a", BALANCE, 400, 0);
+      leaseId = g.leaseId();
+      assertThat(leaseId).isPositive();
+      LeaseReport r = store.reportLease("host-a", BALANCE, leaseId, 150, 250);
+      assertThat(r.status()).isEqualTo(LeaseReport.Status.REPORTED);
+      assertThat(r.released()).isEqualTo(250);
+      assertThat(store.balance(BALANCE).leased()).isZero();
+      assertThat(store.balance(BALANCE).spent()).isEqualTo(150);
+      assertThatThrownBy(() -> store.reportLease("host-a", BALANCE, leaseId, 0, 400))
+          .as("same lease, other amounts")
+          .isInstanceOf(IllegalArgumentException.class);
+    } finally {
+      node.server().close();
+    }
+
+    Node restarted = start(group, peer, RaftStorage.StartupOption.RECOVER);
+    try (RatisBudgetStore store = restarted.client()) {
+      assertThat(store.reportLease("host-a", BALANCE, leaseId, 150, 250).released()).isEqualTo(250);
+      assertThat(store.balance(BALANCE).spent()).as("replay after restart").isEqualTo(150);
     } finally {
       restarted.server().close();
     }

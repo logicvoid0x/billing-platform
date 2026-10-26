@@ -127,6 +127,7 @@ class ContractsTest {
             "billing.v1.BudgetShard/Extend",
             "billing.v1.BudgetShard/Settle",
             "billing.v1.BudgetShard/GrantLease",
+            "billing.v1.BudgetShard/ReportLease",
             "billing.v1.BudgetShard/Modes");
     assertThat(methodNames(BalanceLedgerGrpc.getServiceDescriptor().getMethods()))
         .containsExactlyInAnyOrder(

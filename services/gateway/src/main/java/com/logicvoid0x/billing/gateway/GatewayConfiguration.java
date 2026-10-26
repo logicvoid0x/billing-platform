@@ -60,17 +60,25 @@ public class GatewayConfiguration {
     return KafkaGatewayEvents.create(s.kafkaBootstrapServers(), s.hostId());
   }
 
+  /** Admission for this host; on shutdown its leases are reported back to the shard (Q5). */
+  @Bean(destroyMethod = "returnLeases")
+  AdmissionController admission(GatewaySettings s, GrpcBudgetStore store) {
+    return new AdmissionController(
+        s.hostId(), store, new ModeCache(), new BudgetResolver(), Clock.systemUTC());
+  }
+
   /** The request path. */
   @Bean
   Gateway gateway(
       GatewaySettings s,
       GrpcBudgetStore store,
+      AdmissionController admission,
       Function<Instant, RatingLibrary> ratings,
       KafkaGatewayEvents events) {
     Clock clock = Clock.systemUTC();
     return new Gateway(
         s.hostId(),
-        new AdmissionController(s.hostId(), store, new ModeCache(), new BudgetResolver(), clock),
+        admission,
         store,
         ratings,
         new HttpUpstream(

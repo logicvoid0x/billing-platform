@@ -12,6 +12,8 @@ public final class LocalLease {
   private final AtomicLong remaining = new AtomicLong();
   private volatile long expiresAtMillis = Long.MIN_VALUE;
   private volatile long epoch;
+  private long leaseId;
+  private long granted;
 
   /** An empty lease for {@code budgetId}. */
   public LocalLease(String budgetId) {
@@ -24,17 +26,57 @@ public final class LocalLease {
   }
 
   /**
-   * Installs a new grant, replacing the old one.
+   * Installs a new grant without a lease id, replacing the old one.
    *
-   * @return the unused part of the replaced lease, to report back to the shard
+   * @return the unused part of the replaced lease
    */
-  public synchronized long install(long granted, long grantEpoch, long expiresAt) {
-    requireNonNegative(granted);
-    long unused = remaining.getAndSet(granted);
+  public long install(long granted, long grantEpoch, long expiresAt) {
+    return install(granted, grantEpoch, expiresAt, 0).unused();
+  }
+
+  /**
+   * Installs grant {@code newLeaseId}, replacing the old one.
+   *
+   * @return the replaced lease, to report back to the shard
+   */
+  public synchronized Closed install(
+      long newGranted, long grantEpoch, long expiresAt, long newLeaseId) {
+    requireNonNegative(newGranted);
+    long left = remaining.getAndSet(newGranted);
+    Closed closed = closed(left);
     this.epoch = grantEpoch;
     this.expiresAtMillis = expiresAt;
-    return Math.max(0, unused);
+    this.leaseId = newLeaseId;
+    this.granted = newGranted;
+    return closed;
   }
+
+  /**
+   * Ends the lease (host shutdown): nothing more can be spent from it.
+   *
+   * @return the lease as it stood, to report back to the shard
+   */
+  public synchronized Closed close() {
+    expiresAtMillis = Long.MIN_VALUE;
+    Closed closed = closed(remaining.getAndSet(0));
+    leaseId = 0;
+    granted = 0;
+    return closed;
+  }
+
+  private Closed closed(long left) {
+    long unused = Math.min(Math.max(0, left), granted);
+    return new Closed(leaseId, granted - unused, unused);
+  }
+
+  /**
+   * A lease taken off this host: what was spent from it and what was not.
+   *
+   * @param leaseId the shard's lease id; 0 for none (nothing to report)
+   * @param spent credit spent from the lease
+   * @param unused credit left on it
+   */
+  public record Closed(long leaseId, long spent, long unused) {}
 
   /** Spends {@code amount} if the lease is live and has enough left; all or nothing. */
   public boolean tryConsume(long amount, long nowMillis) {

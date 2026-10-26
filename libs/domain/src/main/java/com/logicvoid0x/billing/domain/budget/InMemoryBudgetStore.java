@@ -101,6 +101,13 @@ public final class InMemoryBudgetStore implements BudgetStore {
   }
 
   @Override
+  public synchronized LeaseReport reportLease(
+      String hostId, String budgetId, long leaseId, long spent, long unused) {
+    now();
+    return state.reportLease(hostId, budgetId, leaseId, spent, unused);
+  }
+
+  @Override
   public synchronized ModeSnapshot modes(String orgId) {
     return state.modes(orgId);
   }

@@ -4,6 +4,7 @@ import com.logicvoid0x.billing.budgetshard.ratis.ShardCodec.Op;
 import com.logicvoid0x.billing.domain.budget.BudgetBalance;
 import com.logicvoid0x.billing.domain.budget.BudgetStore;
 import com.logicvoid0x.billing.domain.budget.LeaseGrant;
+import com.logicvoid0x.billing.domain.budget.LeaseReport;
 import com.logicvoid0x.billing.domain.budget.ModeSnapshot;
 import com.logicvoid0x.billing.domain.budget.ReserveResult;
 import com.logicvoid0x.billing.domain.budget.Rollup;
@@ -96,6 +97,13 @@ public final class RatisBudgetStore implements BudgetStore, AutoCloseable {
   public LeaseGrant grantLease(String hostId, String budgetId, long requested, long epoch) {
     return ShardCodec.readLeaseGrant(
         write(Op.GRANT_LEASE, hostId, budgetId, 0, requested, epoch, Map.of()));
+  }
+
+  @Override
+  public LeaseReport reportLease(
+      String hostId, String budgetId, long leaseId, long spent, long unused) {
+    return ShardCodec.readLeaseReport(
+        write(Op.REPORT_LEASE, hostId, budgetId, 0, spent, leaseId, Map.of("unused", unused)));
   }
 
   @Override

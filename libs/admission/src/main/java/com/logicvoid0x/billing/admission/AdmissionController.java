@@ -1,6 +1,7 @@
 package com.logicvoid0x.billing.admission;
 
 import com.logicvoid0x.billing.domain.Mode;
+import com.logicvoid0x.billing.domain.budget.BudgetState;
 import com.logicvoid0x.billing.domain.budget.BudgetStore;
 import com.logicvoid0x.billing.domain.budget.LeaseGrant;
 import com.logicvoid0x.billing.domain.budget.ReserveResult;
@@ -30,7 +31,7 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class AdmissionController {
   /** Lease time-to-live (about 2 s of host burn). */
-  public static final long LEASE_TTL_MILLIS = 2_000;
+  public static final long LEASE_TTL_MILLIS = BudgetState.LEASE_TTL_MILLIS;
 
   private final String hostId;
   private final BudgetStore store;
@@ -39,6 +40,7 @@ public final class AdmissionController {
   private final Clock clock;
   private final Map<String, LocalLease> leases = new ConcurrentHashMap<>();
   private final Map<String, AtomicLong> failOpenUsed = new ConcurrentHashMap<>();
+  private final AtomicLong unreportedLeases = new AtomicLong();
 
   /** Creates the controller for one gateway host. */
   public AdmissionController(
@@ -182,11 +184,41 @@ public final class AdmissionController {
     LeaseGrant g = store.grantLease(hostId, budgetId, requested, lease.epoch());
     if (g.staleEpoch()) {
       // Our epoch is behind: adopt the shard's epoch and ask again next time.
-      lease.install(0, g.epoch(), 0);
+      report(budgetId, lease.install(0, g.epoch(), 0, 0));
       return 0;
     }
-    lease.install(g.granted(), g.epoch(), clock.millis() + LEASE_TTL_MILLIS);
+    report(
+        budgetId,
+        lease.install(g.granted(), g.epoch(), clock.millis() + LEASE_TTL_MILLIS, g.leaseId()));
     return g.granted();
+  }
+
+  /**
+   * Ends every local lease and reports it to the shard (host shutdown), so unused credit is free at
+   * once instead of after the TTL.
+   */
+  public void returnLeases() {
+    leases.forEach((budgetId, lease) -> report(budgetId, lease.close()));
+  }
+
+  /** Lease reports the shard did not take (it expires those leases at their TTL). */
+  public long unreportedLeases() {
+    return unreportedLeases.get();
+  }
+
+  /**
+   * Reports a lease taken off this host. Best effort: when the shard is unreachable the lease is
+   * charged in full at its TTL and reconciliation corrects it, so admission never waits on this.
+   */
+  private void report(String budgetId, LocalLease.Closed closed) {
+    if (closed.leaseId() == 0) {
+      return;
+    }
+    try {
+      store.reportLease(hostId, budgetId, closed.leaseId(), closed.spent(), closed.unused());
+    } catch (RuntimeException e) {
+      unreportedLeases.incrementAndGet();
+    }
   }
 
   /** The local lease on {@code budgetId}. */
