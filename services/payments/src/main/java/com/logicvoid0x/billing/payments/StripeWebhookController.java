@@ -1,6 +1,8 @@
 package com.logicvoid0x.billing.payments;
 
+import java.net.URI;
 import java.time.Clock;
+import java.time.Duration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -14,8 +16,9 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * {@code POST /webhooks/stripe} (the Stripe CLI forwards here in the local stack). The raw body is
  * verified as received: 400 on a bad signature or a malformed top-up (Stripe keeps retrying for
- * days, so a fixed bug can still be replayed), 200 otherwise, including replays. Behind {@code
- * payments.enabled}: the top-up sink needs a balance-ledger API (open question Q10).
+ * days, so a fixed bug can still be replayed), 200 otherwise, including replays. A failed top-up
+ * post answers 500, so Stripe retries. Behind {@code payments.enabled}: it needs the webhook secret
+ * and the balance ledger ({@code payments.ledger-url}).
  */
 @RestController
 @ConditionalOnProperty(name = "payments.enabled", havingValue = "true")
@@ -45,14 +48,15 @@ public class StripeWebhookController {
   @ConditionalOnProperty(name = "payments.enabled", havingValue = "true")
   static class Wiring {
     @Bean
-    StripeWebhook stripeWebhook(@Value("${payments.stripe.webhook-secret}") String secret) {
+    StripeWebhook stripeWebhook(
+        @Value("${payments.stripe.webhook-secret}") String secret,
+        @Value("${payments.ledger-url}") String ledgerUrl) {
+      if (secret.isBlank()) {
+        throw new IllegalStateException("payments.enabled needs payments.stripe.webhook-secret");
+      }
       return new StripeWebhook(
-          new StripeSignature(secret, StripeSignature.DEFAULT_TOLERANCE), topUps());
-    }
-
-    private static StripeWebhook.TopUps topUps() {
-      throw new IllegalStateException(
-          "payments.enabled needs a balance-ledger top-up API (open question Q10)");
+          new StripeSignature(secret, StripeSignature.DEFAULT_TOLERANCE),
+          new HttpTopUps(URI.create(ledgerUrl), Duration.ofSeconds(5)));
     }
   }
 }

@@ -9,7 +9,8 @@ server:
   port: 8085 # the Stripe CLI forwards here (infra/docker-compose.yml, profile stripe)
 
 payments:
-  # Off until the balance ledger has a top-up API (open question Q10).
+  # Off by default: needs STRIPE_WEBHOOK_SECRET and the balance-ledger service.
   enabled: false
+  ledger-url: http://localhost:8086
   stripe:
     webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
