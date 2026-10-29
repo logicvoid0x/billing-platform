@@ -99,6 +99,29 @@ public final class LinePusher {
     return pushed(key).orElse(itemId);
   }
 
+  /** The Stripe item of the line pushed for (org, SKU, period, version), if any. */
+  public Optional<String> pushed(String orgId, String skuId, Instant periodStart, int ledgerVersion)
+      throws SQLException {
+    return pushed(key(orgId, skuId, periodStart, ledgerVersion));
+  }
+
+  /** Sum of every line pushed for (org, SKU, period), across ledger versions. */
+  public long pushedTotal(String orgId, String skuId, Instant periodStart) throws SQLException {
+    try (Connection c = dataSource.getConnection();
+        PreparedStatement s =
+            c.prepareStatement(
+                "SELECT coalesce(sum(amount_cents), 0) FROM invoicing.pushed_line"
+                    + " WHERE org_id = ? AND sku_id = ? AND period_start = ?")) {
+      s.setString(1, orgId);
+      s.setString(2, skuId);
+      s.setTimestamp(3, Timestamp.from(periodStart));
+      try (ResultSet rs = s.executeQuery()) {
+        rs.next();
+        return rs.getLong(1);
+      }
+    }
+  }
+
   private Optional<String> pushed(String key) throws SQLException {
     try (Connection c = dataSource.getConnection();
         PreparedStatement s =
