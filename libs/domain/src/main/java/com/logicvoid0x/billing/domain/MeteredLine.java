@@ -9,6 +9,8 @@ import java.util.Objects;
  *
  * @param requestId the request
  * @param orgId the org billed
+ * @param workspaceId the workspace that made the request (usage view only; never priced)
+ * @param apiKeyId the API key that made the request (usage view only; never priced)
  * @param skuId opaque SKU ID from the catalog
  * @param meter the meter
  * @param quantity units, {@code > 0}
@@ -17,6 +19,8 @@ import java.util.Objects;
 public record MeteredLine(
     String requestId,
     String orgId,
+    String workspaceId,
+    String apiKeyId,
     String skuId,
     MeterCode meter,
     long quantity,
@@ -25,6 +29,8 @@ public record MeteredLine(
   public MeteredLine {
     Ids.require("requestId", requestId);
     Ids.requireSegment("orgId", orgId);
+    Ids.require("workspaceId", workspaceId);
+    Ids.require("apiKeyId", apiKeyId);
     Ids.require("skuId", skuId);
     Objects.requireNonNull(meter, "meter");
     Objects.requireNonNull(eventTime, "eventTime");

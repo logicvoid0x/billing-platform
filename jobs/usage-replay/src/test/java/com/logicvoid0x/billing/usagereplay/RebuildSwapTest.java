@@ -62,7 +62,9 @@ class RebuildSwapTest {
 
   @Test
   void aReplayRestoresACorruptedHourAndReplayingTwiceIsIdentical() throws Exception {
-    exec("TRUNCATE metering.usage_hourly, metering.usage_hourly_rebuild");
+    exec(
+        "TRUNCATE metering.usage_hourly, metering.usage_hourly_rebuild,"
+            + " metering.usage_hourly_by_key");
     // Live table: hour 10 corrupted (quantity doubled), hour 12 untouched by the replay.
     exec(
         "INSERT INTO metering.usage_hourly (org_id, sku_id, event_hour, quantity, lines) VALUES"
@@ -74,9 +76,9 @@ class RebuildSwapTest {
     SortedSet<Instant> hours = new TreeSet<>(List.of(H10, H11));
     List<HourlyUsage> rebuilt =
         List.of(
-            new HourlyUsage("org_1", "sku_out", H10, 120, 2),
-            new HourlyUsage("org_2", "sku_out", H10, 7, 1),
-            new HourlyUsage("org_1", "sku_out", H11, 6, 2));
+            new HourlyUsage("org_1", "ws_1", "key_1", "sku_out", H10, 120, 2),
+            new HourlyUsage("org_2", "ws_1", "key_1", "sku_out", H10, 7, 1),
+            new HourlyUsage("org_1", "ws_1", "key_1", "sku_out", H11, 6, 2));
 
     assertThat(RebuildSwap.replace(jdbc, "replay-1", hours, rebuilt)).isEqualTo(3);
     Map<String, String> once = usageHourly();
@@ -93,18 +95,20 @@ class RebuildSwapTest {
 
   @Test
   void aFailedSwapLeavesTheLiveTableUntouched() throws Exception {
-    exec("TRUNCATE metering.usage_hourly, metering.usage_hourly_rebuild");
+    exec(
+        "TRUNCATE metering.usage_hourly, metering.usage_hourly_rebuild,"
+            + " metering.usage_hourly_by_key");
     exec(
         "INSERT INTO metering.usage_hourly (org_id, sku_id, event_hour, quantity, lines) VALUES"
             + " ('org_1', 'sku_out', '"
             + H10
             + "', 5, 1)");
     Map<String, String> before = usageHourly();
-    // Duplicate primary key inside the rebuild: the insert fails mid-transaction.
+    // A blank workspace violates usage_hourly_by_key's check: the swap fails mid-transaction.
     List<HourlyUsage> bad =
         List.of(
-            new HourlyUsage("org_1", "sku_out", H10, 1, 1),
-            new HourlyUsage("org_1", "sku_out", H10, 2, 1));
+            new HourlyUsage("org_1", "ws_1", "key_1", "sku_out", H10, 1, 1),
+            new HourlyUsage("org_1", " ", "key_1", "sku_out", H10, 2, 1));
     assertThatThrownBy(() -> RebuildSwap.replace(jdbc, "bad", new TreeSet<>(List.of(H10)), bad))
         .isInstanceOf(SQLException.class);
     assertThat(usageHourly()).isEqualTo(before);

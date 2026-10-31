@@ -43,7 +43,8 @@ class HourlyWindowsTest {
   }
 
   private static MeteredLine line(String id, String org, Instant at, long quantity) {
-    return new MeteredLine(id, org, "sku_out", MeterCode.OUTPUT_TOKENS, quantity, at);
+    return new MeteredLine(
+        id, org, "ws_1", "key_1", "sku_out", MeterCode.OUTPUT_TOKENS, quantity, at);
   }
 
   private static Instant at(String hhmm) {

@@ -143,6 +143,16 @@ class HttpCatalogClientTest {
   }
 
   @Test
+  void theCatalogOfAnHourIsAvailableForSkuDetails() {
+    HttpCatalogClient client = client();
+    assertThat(client.catalogAt(HOUR).skus())
+        .extracting(com.logicvoid0x.billing.rating.Sku::model)
+        .contains("model-x", "model-t");
+    client.at(HOUR);
+    assertThat(snapshotCalls).as("library and catalog share one cached snapshot").hasValue(1);
+  }
+
+  @Test
   void aFailedSnapshotIsReportedAndNotCached() {
     HttpCatalogClient client = client();
     status.set(503);

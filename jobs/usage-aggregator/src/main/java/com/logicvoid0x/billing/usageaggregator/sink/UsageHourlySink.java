@@ -92,16 +92,7 @@ public final class UsageHourlySink implements Sink<HourlyUsage>, SupportsCommitt
 
     @Override
     public void write(HourlyUsage u, Context context) {
-      pending.merge(
-          u.key(),
-          u,
-          (a, b) ->
-              new HourlyUsage(
-                  a.orgId(),
-                  a.skuId(),
-                  a.eventHour(),
-                  Math.addExact(a.quantity(), b.quantity()),
-                  Math.addExact(a.lines(), b.lines())));
+      pending.merge(u.key(), u, HourlyUsage::plus);
     }
 
     @Override
@@ -181,6 +172,27 @@ public final class UsageHourlySink implements Sink<HourlyUsage>, SupportsCommitt
             s.setTimestamp(3, Timestamp.from(u.eventHour()));
             s.setLong(4, u.quantity());
             s.setLong(5, u.lines());
+            s.addBatch();
+          }
+          s.executeBatch();
+        }
+        // Same increments with workspace and key, for the usage view (Q12 b); same transaction, so
+        // summing usage_hourly_by_key over workspace and key always equals usage_hourly.
+        try (PreparedStatement s =
+            c.prepareStatement(
+                "INSERT INTO metering.usage_hourly_by_key (org_id, workspace_id, api_key_id,"
+                    + " sku_id, event_hour, quantity, lines) VALUES (?, ?, ?, ?, ?, ?, ?)"
+                    + " ON CONFLICT (org_id, workspace_id, api_key_id, sku_id, event_hour)"
+                    + " DO UPDATE SET quantity = usage_hourly_by_key.quantity + EXCLUDED.quantity,"
+                    + " lines = usage_hourly_by_key.lines + EXCLUDED.lines, updated_at = now()")) {
+          for (HourlyUsage u : batch.increments()) {
+            s.setString(1, u.orgId());
+            s.setString(2, u.workspaceId());
+            s.setString(3, u.apiKeyId());
+            s.setString(4, u.skuId());
+            s.setTimestamp(5, Timestamp.from(u.eventHour()));
+            s.setLong(6, u.quantity());
+            s.setLong(7, u.lines());
             s.addBatch();
           }
           s.executeBatch();

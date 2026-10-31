@@ -50,7 +50,8 @@ class UsageHourlySinkTest {
   void empty() throws SQLException {
     try (Connection c = jdbc.connect();
         Statement s = c.createStatement()) {
-      s.executeUpdate("TRUNCATE metering.usage_hourly, metering.applied_batches");
+      s.executeUpdate(
+          "TRUNCATE metering.usage_hourly, metering.usage_hourly_by_key, metering.applied_batches");
     }
   }
 
@@ -76,15 +77,16 @@ class UsageHourlySinkTest {
         new HourlyBatch(
             "job:j1:0:1",
             List.of(
-                new HourlyUsage("org_1", "sku_out", H10, 100, 2),
-                new HourlyUsage("org_1", "sku_in", H10, 7, 1)));
+                new HourlyUsage("org_1", "ws_1", "key_1", "sku_out", H10, 100, 2),
+                new HourlyUsage("org_1", "ws_1", "key_1", "sku_in", H10, 7, 1)));
     assertThat(UsageHourlySink.apply(jdbc, first)).isTrue();
     assertThat(UsageHourlySink.apply(jdbc, first)).as("re-commit after recovery").isFalse();
     assertThat(
             UsageHourlySink.apply(
                 jdbc,
                 new HourlyBatch(
-                    "job:j1:0:2", List.of(new HourlyUsage("org_1", "sku_out", H10, 5, 1)))))
+                    "job:j1:0:2",
+                    List.of(new HourlyUsage("org_1", "ws_1", "key_1", "sku_out", H10, 5, 1)))))
         .isTrue();
     assertThat(table())
         .containsExactly(
@@ -95,7 +97,8 @@ class UsageHourlySinkTest {
   void theSerializerRoundTripsABatch() throws Exception {
     HourlyBatch batch =
         new HourlyBatch(
-            "job:j1:3:9", List.of(new HourlyUsage("org_9", "sku_x", H11, Long.MAX_VALUE, 4)));
+            "job:j1:3:9",
+            List.of(new HourlyUsage("org_9", "ws_1", "key_1", "sku_x", H11, Long.MAX_VALUE, 4)));
     HourlyBatch.Serializer s = new HourlyBatch.Serializer();
     assertThat(s.deserialize(s.getVersion(), s.serialize(batch))).isEqualTo(batch);
   }
@@ -106,7 +109,7 @@ class UsageHourlySinkTest {
     long expected10 = 0;
     for (int i = 0; i < 2_000; i++) {
       Instant hour = i % 2 == 0 ? H10 : H11;
-      input.add(new HourlyUsage("org_" + (i % 5), "sku_out", hour, i + 1, 1));
+      input.add(new HourlyUsage("org_" + (i % 5), "ws_1", "key_1", "sku_out", hour, i + 1, 1));
       if (i % 5 == 0 && hour.equals(H10)) {
         expected10 += i + 1;
       }
@@ -128,5 +131,75 @@ class UsageHourlySinkTest {
     }
     assertThat(total).isEqualTo(2_000L * 2_001 / 2);
     assertThat(lines).isEqualTo(2_000);
+  }
+
+  @Test
+  void byKeyRowsSumOverWorkspaceAndKeyToUsageHourly() throws Exception {
+    List<HourlyUsage> input = new ArrayList<>();
+    for (int i = 0; i < 3_000; i++) {
+      input.add(
+          new HourlyUsage(
+              "org_" + (i % 3),
+              "ws_" + (i % 4),
+              "key_" + (i % 7),
+              i % 2 == 0 ? "sku_out" : "sku_in",
+              i % 5 == 0 ? H11 : H10,
+              i + 1,
+              1));
+    }
+    StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+    env.setParallelism(3);
+    env.enableCheckpointing(50, CheckpointingMode.EXACTLY_ONCE);
+    env.fromData(input).rebalance().sinkTo(new UsageHourlySink("test", jdbc)).name("usage-hourly");
+    env.execute("by-key-test");
+
+    Map<String, String> summed = new TreeMap<>();
+    try (Connection c = jdbc.connect();
+        Statement s = c.createStatement();
+        ResultSet rs =
+            s.executeQuery(
+                "SELECT org_id, sku_id, event_hour, sum(quantity), sum(lines)"
+                    + " FROM metering.usage_hourly_by_key GROUP BY org_id, sku_id, event_hour")) {
+      while (rs.next()) {
+        summed.put(
+            rs.getString(1) + "|" + rs.getString(2) + "|" + rs.getTimestamp(3).toInstant(),
+            rs.getLong(4) + "/" + rs.getLong(5));
+      }
+    }
+    assertThat(summed).isNotEmpty().isEqualTo(table());
+    try (Connection c = jdbc.connect();
+        Statement s = c.createStatement();
+        ResultSet rs =
+            s.executeQuery(
+                "SELECT count(DISTINCT (workspace_id, api_key_id)) FROM"
+                    + " metering.usage_hourly_by_key")) {
+      rs.next();
+      assertThat(rs.getLong(1)).as("workspace and key kept").isEqualTo(28);
+    }
+  }
+
+  @Test
+  void versionOneBatchesStillDeserialize() throws Exception {
+    java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+    try (java.io.DataOutputStream out = new java.io.DataOutputStream(bytes)) {
+      out.writeUTF("job:j0:0:1");
+      out.writeInt(1);
+      out.writeUTF("org_1");
+      out.writeUTF("sku_out");
+      out.writeLong(H10.getEpochSecond());
+      out.writeLong(42);
+      out.writeLong(1);
+    }
+    HourlyBatch b = new HourlyBatch.Serializer().deserialize(1, bytes.toByteArray());
+    assertThat(b.increments())
+        .containsExactly(
+            new HourlyUsage(
+                "org_1",
+                HourlyBatch.UNATTRIBUTED,
+                HourlyBatch.UNATTRIBUTED,
+                "sku_out",
+                H10,
+                42,
+                1));
   }
 }

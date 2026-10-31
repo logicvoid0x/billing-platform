@@ -12,6 +12,7 @@ import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
+import org.apache.flink.streaming.api.datastream.WindowedStream;
 import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
@@ -19,8 +20,8 @@ import org.apache.flink.util.Collector;
 import org.apache.flink.util.OutputTag;
 
 /**
- * Event-time hours per (org, SKU), with 1 h allowed lateness (design: "Event time; 1 h allowed
- * lateness; later events become correction records").
+ * Event-time hours per (org, workspace, API key, SKU), with 1 h allowed lateness (design: "Event
+ * time; 1 h allowed lateness; later events become correction records").
  *
  * <p>A window fires when the watermark passes the end of its hour, and again for each late line
  * within the lateness. Every firing emits only the increment since the previous one, so the sink
@@ -50,15 +51,34 @@ public final class HourlyWindows {
         .withIdleness(Duration.ofMinutes(1));
   }
 
+  /** How often an open hour emits its increment for the usage view (with 20 s checkpoints). */
+  public static final Duration EARLY_FIRING = Duration.ofSeconds(20);
+
   /** Aggregates deduplicated lines into hourly increments. */
   public static SingleOutputStreamOperator<HourlyUsage> apply(
       DataStream<MeteredLine> lines, WatermarkStrategy<MeteredLine> watermarks) {
-    return lines
-        .assignTimestampsAndWatermarks(watermarks)
-        .name("event-time")
-        .uid("event-time")
-        .keyBy(l -> l.orgId() + "|" + l.skuId())
-        .window(TumblingEventTimeWindows.of(Duration.ofHours(1)))
+    return apply(lines, watermarks, null);
+  }
+
+  /**
+   * Aggregates deduplicated lines into hourly increments, also firing every {@code earlyFiring} of
+   * processing time while an hour is open (null: only at the end of the hour and for late lines).
+   */
+  public static SingleOutputStreamOperator<HourlyUsage> apply(
+      DataStream<MeteredLine> lines,
+      WatermarkStrategy<MeteredLine> watermarks,
+      Duration earlyFiring) {
+    WindowedStream<MeteredLine, String, TimeWindow> hours =
+        lines
+            .assignTimestampsAndWatermarks(watermarks)
+            .name("event-time")
+            .uid("event-time")
+            .keyBy(l -> HourlyUsage.key(l.orgId(), l.workspaceId(), l.apiKeyId(), l.skuId()))
+            .window(TumblingEventTimeWindows.of(Duration.ofHours(1)));
+    if (earlyFiring != null) {
+      hours = hours.trigger(new EarlyFiringTrigger(earlyFiring));
+    }
+    return hours
         .allowedLateness(ALLOWED_LATENESS)
         .sideOutputLateData(TOO_LATE)
         .aggregate(new Sum(), new EmitIncrement())
@@ -127,11 +147,13 @@ public final class HourlyWindows {
       if (lines == 0) {
         return;
       }
-      int bar = key.indexOf('|');
+      String[] k = key.split("\u0000", -1);
       out.collect(
           new HourlyUsage(
-              key.substring(0, bar),
-              key.substring(bar + 1),
+              k[0],
+              k[1],
+              k[2],
+              k[3],
               Instant.ofEpochMilli(ctx.window().getStart()),
               quantity,
               lines));

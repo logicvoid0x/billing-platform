@@ -28,7 +28,8 @@ class DedupeLinesTest {
   private static final Instant T = Instant.parse("2026-11-01T10:15:00Z");
 
   private static MeteredLine line(String request, MeterCode meter, long quantity) {
-    return new MeteredLine(request, "org_1", "sku_" + meter.code(), meter, quantity, T);
+    return new MeteredLine(
+        request, "org_1", "ws_1", "key_1", "sku_" + meter.code(), meter, quantity, T);
   }
 
   private static KeyedOneInputStreamOperatorTestHarness<String, MeteredLine, MeteredLine> harness()

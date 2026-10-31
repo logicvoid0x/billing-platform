@@ -61,10 +61,19 @@ class UsageRecordsTest {
   @Test
   void meteredLineCarriesItsDedupeKeyAndHour() {
     MeteredLine line =
-        new MeteredLine("req_1", "org_42", "sku_out_x", MeterCode.OUTPUT_TOKENS, 40_000_000L, T);
+        new MeteredLine(
+            "req_1",
+            "org_42",
+            "ws_1",
+            "key_1",
+            "sku_out_x",
+            MeterCode.OUTPUT_TOKENS,
+            40_000_000L,
+            T);
     assertThat(line.dedupeKey()).isEqualTo("req_1:output_tokens");
     assertThat(line.eventHour()).isEqualTo(Instant.parse("2026-11-01T10:00:00Z"));
-    assertThatThrownBy(() -> new MeteredLine("req_1", "org", "sku", MeterCode.OUTPUT_TOKENS, 0L, T))
+    assertThatThrownBy(() ->
+            new MeteredLine("req_1", "org", "ws", "key", "sku", MeterCode.OUTPUT_TOKENS, 0L, T))
         .as("one metered line per non-zero meter")
         .isInstanceOf(IllegalArgumentException.class);
   }

@@ -96,7 +96,7 @@ public final class UsageAggregatorJob {
     lines.getSideOutput(ResolveUsage.DEAD_LETTERS).sinkTo(dlq).name("usage-dlq").uid("usage-dlq");
 
     SingleOutputStreamOperator<HourlyUsage> hourly =
-        HourlyWindows.apply(dedupe(lines), HourlyWindows.watermarks());
+        HourlyWindows.apply(dedupe(lines), HourlyWindows.watermarks(), HourlyWindows.EARLY_FIRING);
 
     KafkaSink<MeteredLine> corrections =
         KafkaSink.<MeteredLine>builder()

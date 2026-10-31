@@ -42,7 +42,7 @@ public final class HttpCatalogClient {
   private final Clock clock;
   private final HttpClient http;
   private final ReentrantLock lock = new ReentrantLock();
-  private final Map<Instant, RatingLibrary> byHour = new LinkedHashMap<>();
+  private final Map<Instant, Entry> byHour = new LinkedHashMap<>();
 
   private long knownVersion = -1;
   private Instant nextVersionCheck = Instant.MIN;
@@ -82,11 +82,28 @@ public final class HttpCatalogClient {
    * @throws CatalogUnavailableException if the catalog service fails
    */
   public RatingLibrary at(Instant at) {
+    return entry(at).library();
+  }
+
+  /**
+   * The catalog rows in effect during the hour that contains {@code at} (for SKU details such as
+   * the model, which the rating library does not expose).
+   *
+   * @throws CatalogUnavailableException if the catalog service fails
+   */
+  public RatingCatalog catalogAt(Instant at) {
+    return entry(at).catalog();
+  }
+
+  /** One cached hour. */
+  private record Entry(RatingCatalog catalog, RatingLibrary library) {}
+
+  private Entry entry(Instant at) {
     Instant hour = at.truncatedTo(ChronoUnit.HOURS);
     lock.lock();
     try {
       checkVersion();
-      RatingLibrary cached = byHour.remove(hour);
+      Entry cached = byHour.remove(hour);
       if (cached != null) {
         byHour.put(hour, cached); // most recently used goes last
         return cached;
@@ -98,12 +115,12 @@ public final class HttpCatalogClient {
         byHour.clear();
         knownVersion = version;
       }
-      RatingLibrary library = new CatalogRatingLibrary(catalog, codeVersion);
-      byHour.put(hour, library);
+      Entry entry = new Entry(catalog, new CatalogRatingLibrary(catalog, codeVersion));
+      byHour.put(hour, entry);
       if (byHour.size() > maxHours) {
         byHour.remove(byHour.keySet().iterator().next());
       }
-      return library;
+      return entry;
     } finally {
       lock.unlock();
     }

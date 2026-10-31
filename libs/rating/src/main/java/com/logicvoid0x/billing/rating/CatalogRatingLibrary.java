@@ -69,6 +69,8 @@ public final class CatalogRatingLibrary implements RatingLibrary {
           new MeteredLine(
               usage.requestId(),
               usage.orgId(),
+              usage.workspaceId(),
+              usage.apiKeyId(),
               sku.skuId(),
               meter,
               usage.quantities().get(meter),

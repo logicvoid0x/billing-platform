@@ -111,19 +111,15 @@ public final class UsageReplayJob {
             .map(l ->
                 new HourlyUsage(
                     l.orgId(),
+                    l.workspaceId(),
+                    l.apiKeyId(),
                     l.skuId(),
                     l.eventTime().truncatedTo(ChronoUnit.HOURS),
                     l.quantity(),
                     1))
             .returns(TypeInformation.of(HourlyUsage.class))
             .keyBy(HourlyUsage::key)
-            .reduce((a, b) ->
-                new HourlyUsage(
-                    a.orgId(),
-                    a.skuId(),
-                    a.eventHour(),
-                    Math.addExact(a.quantity(), b.quantity()),
-                    Math.addExact(a.lines(), b.lines())))
+            .reduce(HourlyUsage::plus)
             .name("hourly-totals");
     List<HourlyUsage> out = new ArrayList<>();
     hourly.executeAndCollect(jobName()).forEachRemaining(out::add);
