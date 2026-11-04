@@ -1,7 +1,5 @@
 # Billing & Payment Collection Platform — Unified End-to-End Design
 
-> **Money note for this repository:** all amounts are integer cents (`long`). Where this design says nano-dollars, `BigDecimal` or exact decimals, follow `docs/decisions/0002-money-in-cents.md` and the "Money in integer cents" section of `docs/implementation-plan.md` instead.
-
 2026-10-31 · Rakesh
 
 ## Purpose and scope
@@ -144,8 +142,8 @@ A prepaid balance, a spend limit and a plan usage allowance are all a **budget**
 
 | Budget kind                           | Unit                 | Credit comes from                                     | Comes back by                                |
 |---------------------------------------|----------------------|-------------------------------------------------------|----------------------------------------------|
-| Prepaid balance                       | Nano-dollars         | Ledger: top-ups minus debits minus outstanding escrow | Top-up or auto-recharge                      |
-| Spend limit (org, workspace, API key) | Nano-dollars         | Cap minus spend in the period                         | A new period (a new budget instance)         |
+| Prepaid balance                       | Cents                | Ledger: top-ups minus debits minus outstanding escrow | Top-up or auto-recharge                      |
+| Spend limit (org, workspace, API key) | Cents                | Cap minus spend in the period                         | A new period (a new budget instance)         |
 | Usage allowance (user or org pool)    | Weighted usage units | Cap minus usage in the current window                 | Window reset, or usage ageing out if rolling |
 
 Weighted usage units are tokens × a per-SKU weight from an effective-dated **allowance weight book**, so the same SKU resolution and rating library serve dollars and units. Budgets are checked in priority groups: plan allowances first, then money budgets if the customer enabled extra usage.
@@ -186,9 +184,9 @@ Rating is ours because contracts are complex; invoicing mechanics, payment, tax 
 
 ### Rating
 
-For each `(org, SKU, hour)` row, the rating engine looks up the price in effect at that hour (contract override, else list price), applies discounts and tiers, computes the amount at full precision, and appends a rated row recording the price book, contract and rating-code versions. Price effective dates align to hour boundaries, so each row has exactly one price.
+For each `(org, SKU, hour)` row, the rating engine looks up the price in effect at that hour (contract override, else list price), applies discounts and tiers, charges the hour as `F(after) − F(before)` on the SKU's running period quantity (whole cents, see [Money representation](#money-representation)), and appends a rated row recording the price book, contract and rating-code versions. Price effective dates align to hour boundaries, so each row has exactly one price.
 
-*Example:* Acme has 20% off Sonnet 4.6 output tokens and uses 40M in one hour. List \$15.00/M becomes \$12.00/M, so the row is \$480.000000, rated with price book v12, contract v3 and rating code v7.
+*Example:* Acme has 20% off Sonnet 4.6 output tokens and uses 40M in one hour. List \$15.00/M (`Rate(1500, 1_000_000)`) becomes \$12.00/M (`Rate(1200, 1_000_000)`), so the row is 48,000¢, rated with price book v12, contract v3 and rating code v7.
 
 - **Volume tiers** are graduated by default. Each increment is charged `F(after) − F(before)` from a running counter in Flink state, so charges telescope to `F(final)` regardless of arrival order; at close `F(final) − Σ charges` must be zero.
 
@@ -204,7 +202,7 @@ The same rating library prices enforcement holds, settlement and invoices, so th
 
 1.  The period freezes at close + 24 h; anything later becomes a prior-period adjustment on the next invoice.
 
-2.  Amounts round once per invoice line, `HALF_EVEN`, under a versioned rounding policy signed off by Finance.
+2.  Amounts round once per invoice line, `HALF_EVEN`: each line is `Cents.forTotal` of the period quantity (or `F(total)` for tiers) under a versioned rounding policy signed off by Finance, and must equal the sum of that line's hourly rated increments.
 
 3.  Lines go to Stripe as hourly or daily aggregates per subscription item, never raw events, keyed by `hash(org, sku, period, ledger_version)`. Pushed state lives in our own table, since Stripe prunes idempotency keys after about 24 h.
 
@@ -262,14 +260,21 @@ Ledger writes scale with escrow moves and rollups, not requests: a few writes pe
 
 ### Money representation
 
-The two source designs use different precisions; this table settles where each applies.
+Every amount is a `long` count of US cents (`Cents` in `libs:money`): balances, holds, leases, escrow, ledger entries, top-ups, rated amounts, invoice lines and the fail-open allowance. Postgres `BIGINT`, Protobuf `int64`. Money code never uses `BigDecimal`, `BigInteger`, `double` or `float`, nor `int` (it overflows at about \$21 million). Allowance budgets count integer usage units instead. USD only for now; another currency would use its own smallest unit.
 
-| Where                                   | Representation                                                     | Rounding                                                   |
-|-----------------------------------------|--------------------------------------------------------------------|------------------------------------------------------------|
-| Hot path: leases, holds, shard counters | `long` nano-dollars (10⁻⁹ USD); allowances in integer usage units  | None; atomic counters                                      |
-| Rated ledger and balance ledger         | Exact decimals (`BigDecimal`), never floating point                | None                                                       |
-| `TRUE_UP`                               | Exact decimal difference between rated amount and recognized usage | None, so the balance converges to the invoice-grade figure |
-| Invoice line                            | Currency minor units                                               | Once, `HALF_EVEN`                                          |
+- **Prices** are `Cents.Rate(cents, perUnits)`: whole cents per a fixed number of units. \$15 per million tokens is `Rate(1500, 1_000_000)`; \$0.075 per million is `Rate(75, 1_000_000_000)`.
+- **Discounts** are `int` basis points (2000 = 20%), applied once when a contract rate is created. A discount that gives a fractional rate is rejected; the SKU then needs a larger `perUnits`.
+- **No per-request rounding.** One token at \$15/M costs 0.0015¢, so rounding each request and adding cents drifts (a request under half a cent would bill nothing). Every place that spends or bills money keeps a running quantity per SKU and charges `Cents.charge(before, after, rate) = forTotal(after) − forTotal(before)`. The charges sum exactly to `forTotal(final)` in any arrival order.
+- **Holds** use `Cents.hold`, which adds 1 cent because concurrent requests move the running total.
+
+| Where                                   | Representation                                                  | Rounding                                                            |
+|-----------------------------------------|-----------------------------------------------------------------|---------------------------------------------------------------------|
+| Hot path: leases, holds, shard counters | `long` cents; allowances in integer usage units                 | None; atomic counters (holds from `Cents.hold`)                     |
+| Rated ledger                            | `long` cents per `(org, SKU, hour)`: `Cents.charge` increments  | Telescoping: increments sum to `forTotal` of the period quantity    |
+| Balance ledger and `TRUE_UP`            | `long` cents; `TRUE_UP` is rated amount minus recognized usage  | None beyond the rated increments, so the balance converges exactly  |
+| Invoice line                            | `Cents.forTotal` of the period total                            | Once, half-even; error under half a cent per account, SKU, period   |
+
+Rationale and the reference implementation: [`docs/decisions/0002-money-in-cents.md`](decisions/0002-money-in-cents.md).
 
 ## Integration seams
 
@@ -297,7 +302,7 @@ public record SettleRecord(
         String homeRegion,
         Instant eventTime,                   // bucketed by the same event-time hour as metering
         Map<String, Long> heldByBudget,      // budgetId -> held, in the budget's unit
-        Map<String, Long> settledByBudget,   // budgetId -> actual, nano-USD or usage units
+        Map<String, Long> settledByBudget,   // budgetId -> actual, cents or usage units
         boolean failOpen,                    // admitted under the fail-open allowance
         String ratingLibraryVersion,
         long sequence) {}                    // a retried settle reuses its sequence
@@ -306,10 +311,10 @@ public record SettleRecord(
 ``` java
 /** Hourly, per account: post the gap between the invoice-grade amount and recognized usage. */
 public Optional<LedgerEntry> trueUp(String orgId, Instant hour, int ratingVersion) {
-    BigDecimal rated = ratedLedger.amountFor(orgId, hour, ratingVersion);   // exact decimal
-    BigDecimal recognized = balanceLedger.recognizedUsage(orgId, hour);    // rollups + earlier true-ups
-    BigDecimal gap = rated.subtract(recognized);
-    if (gap.signum() == 0) {
+    long rated = ratedLedger.amountFor(orgId, hour, ratingVersion);         // cents
+    long recognized = balanceLedger.recognizedUsage(orgId, hour);          // rollups + earlier true-ups
+    long gap = Math.subtractExact(rated, recognized);
+    if (gap == 0) {
         return Optional.empty();
     }
     String key = orgId + ":" + hour + ":" + ratingVersion;                  // posted once per version
