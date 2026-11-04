@@ -15,10 +15,10 @@ import java.util.Optional;
 import javax.sql.DataSource;
 
 /**
- * Pushes closed invoice lines to Stripe (plan: "as an invoice item with its final amount in integer
- * cents (quantity and rate only in the description), never as metered usage or a decimal unit price
- * that Stripe would multiply and round itself. Key: hash(org, sku, period, ledger_version); store
- * pushed state in our own table").
+ * Pushes closed invoice lines to Stripe (requirement: "as an invoice item with its final amount in
+ * integer cents (quantity and rate only in the description), never as metered usage or a decimal
+ * unit price that Stripe would multiply and round itself. Key: hash(org, sku, period,
+ * ledger_version); store pushed state in our own table").
  */
 public final class LinePusher {
   /** One closed line. */

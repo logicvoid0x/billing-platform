@@ -8,7 +8,7 @@ import com.tngtech.archunit.lang.ArchRule;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
-/** Money code is long cents only: see docs/decisions/0002-money-in-cents.md. */
+/** Money code is long cents only: see docs/design.md, "Money representation". */
 @AnalyzeClasses(packages = "com.logicvoid0x.billing.gateway", importOptions = MainClassesOnly.class)
 class MoneyTypesArchTest {
   @ArchTest static final ArchRule exactMoneyOnly = MoneyRules.EXACT_MONEY_ONLY;

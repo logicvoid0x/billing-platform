@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.TreeSet;
 
 /**
- * Reconciliation against Stripe (plan: "compare invoiced totals with the rated ledger before
+ * Reconciliation against Stripe (requirement: "compare invoiced totals with the rated ledger before
  * finalization; payments vs TOP_UP daily"). Pure comparisons in long cents; callers load each side.
  */
 public final class StripeChecks {

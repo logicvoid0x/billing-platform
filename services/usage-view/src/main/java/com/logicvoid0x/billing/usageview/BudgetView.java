@@ -8,10 +8,10 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * What the usage page shows for one budget (plan: "Live balance, holds and window usage (percent
- * used, resets_at) from the shard and ledger"). Percent used is integer basis points (10,000 =
- * 100%), floored, so no floating point touches amounts. Spent includes what is held, because held
- * credit is not available.
+ * What the usage page shows for one budget (requirement: "Live balance, holds and window usage
+ * (percent used, resets_at) from the shard and ledger"). Percent used is integer basis points
+ * (10,000 = 100%), floored, so no floating point touches amounts. Spent includes what is held,
+ * because held credit is not available.
  *
  * @param budgetId the budget
  * @param unit cents or usage units

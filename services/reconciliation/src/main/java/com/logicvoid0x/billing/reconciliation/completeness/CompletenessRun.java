@@ -10,11 +10,11 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * One hourly completeness run over a sealed hour (plan: "hourly on sealed hours ... anti-join on
- * requestId and re-emit missing usage with the original ID"). The gateway log is read over a window
- * wider than the hour, because records are produced after their event time, and filtered on event
- * time. Missing usage is re-emitted and awaited, so a later run of the same hour finds it archived
- * and reports zero drift.
+ * One hourly completeness run over a sealed hour (requirement: "hourly on sealed hours ...
+ * anti-join on requestId and re-emit missing usage with the original ID"). The gateway log is read
+ * over a window wider than the hour, because records are produced after their event time, and
+ * filtered on event time. Missing usage is re-emitted and awaited, so a later run of the same hour
+ * finds it archived and reports zero drift.
  */
 public final class CompletenessRun {
   /** Topic values over a Kafka timestamp range. */

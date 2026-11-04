@@ -19,8 +19,7 @@ import javax.sql.DataSource;
 
 /**
  * Credit grants as sub-balances of customer credit (design: "sub-balances with an expiry, drawn
- * down expiring-first; expiry posts GRANT_EXPIRY to breakage revenue"). Assumptions in
- * open-questions Q9.
+ * down expiring-first; expiry posts GRANT_EXPIRY to breakage revenue"). Assumptions in design Q9.
  *
  * <p>Lots are derived from the ledger, not stored per posting. Customer-credit postings are
  * replayed in time order: a grant's funding TOP_UP opens its lot, and any other TOP_UP adds to the

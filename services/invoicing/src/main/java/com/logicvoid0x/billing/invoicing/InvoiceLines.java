@@ -4,9 +4,9 @@ import com.logicvoid0x.billing.rating.RatingLibrary;
 import java.time.Instant;
 
 /**
- * Invoice line amounts (plan: "Each line's amount is Cents.forTotal(period quantity) (or F(total)
- * for tiers), so it is rounded once, half-even, in whole cents; the hourly increments in the rated
- * ledger must sum to it exactly").
+ * Invoice line amounts (requirement: "Each line's amount is Cents.forTotal(period quantity) (or
+ * F(total) for tiers), so it is rounded once, half-even, in whole cents; the hourly increments in
+ * the rated ledger must sum to it exactly").
  */
 public final class InvoiceLines {
   private InvoiceLines() {}

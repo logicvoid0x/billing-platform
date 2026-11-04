@@ -9,7 +9,7 @@ import java.util.Objects;
  * Effective-dated context-band rule for a model: a request whose prompt (input, cache-write and
  * cache-read tokens) exceeds {@code thresholdTokens} is in {@code aboveBand}, otherwise in {@code
  * baseBand}. The band applies to every meter of the request. Which meters count is recorded in
- * docs/decisions/open-questions.md (Q2).
+ * docs/design.md, Q2.
  *
  * @param model the model the rule applies to
  * @param thresholdTokens prompt size at or below which the base band applies

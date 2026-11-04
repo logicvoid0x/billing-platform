@@ -6,8 +6,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Per-API-key requests-per-minute limiter stub (plan: "runs a per-minute limiter stub"): a fixed
- * one-minute window per key, in memory on one gateway host.
+ * Per-API-key requests-per-minute limiter stub (requirement: "runs a per-minute limiter stub"): a
+ * fixed one-minute window per key, in memory on one gateway host.
  */
 public final class MinuteLimiter {
   private final long perMinute;

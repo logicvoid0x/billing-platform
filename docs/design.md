@@ -274,7 +274,7 @@ Every amount is a `long` count of US cents (`Cents` in `libs:money`): balances, 
 | Balance ledger and `TRUE_UP`            | `long` cents; `TRUE_UP` is rated amount minus recognized usage  | None beyond the rated increments, so the balance converges exactly  |
 | Invoice line                            | `Cents.forTotal` of the period total                            | Once, half-even; error under half a cent per account, SKU, period   |
 
-Rationale and the reference implementation: [`docs/decisions/0002-money-in-cents.md`](decisions/0002-money-in-cents.md).
+Rounding each request instead would drift: in a simulation of one million requests it under-billed by 222¢. `forTotal` splits `units` into whole `perUnits` blocks and a remainder to avoid `long` overflow, and decides half-even ties by the parity of the whole result (not of the remainder part alone), so `Rate(1, 2)` gives 3 units → 2¢ and 7 units → 4¢.
 
 ## Integration seams
 
@@ -402,6 +402,75 @@ The signals that matter most are financial (money let through, revenue left unbi
 
 **Load shape:** Kafka ingest is about 100 MB/s at peak; `usage_hourly` takes one row per distinct `(org, sku, hour)` per checkpoint, not per event; the balance ledger takes a few writes per active account per 30 s; the hot path takes about 100K admissions/s, almost all in-process.
 
+## Implementation decisions
+
+Choices made while building this repository that refine the design above. The `Q` labels are the original question numbers, which code comments and migrations still cite.
+
+### Platform and toolchain
+
+- Versions live only in `gradle/libs.versions.toml`. Kafka clients stay on 4.3.x, Flink on 2.2.x (2.3 waits for a matching Kafka connector) and Ratis on 3.2.x until deliberately upgraded. The Gradle daemon is pinned to JDK 21 (`gradle/gradle-daemon-jvm.properties`).
+- Flink-bound modules (`libs:money`, `libs:domain`, `libs:contracts`, `libs:rating`, `jobs:*`) compile for Java 17; everything else for Java 21. Error Prone 2.43+ runs only on JDK 21, so the Java 17 modules use the `errorproneJdk17` line (2.42.x); revisit when they move to 21.
+
+### Local environment
+
+- `infra/docker-compose.yml` pins every image tag. SeaweedFS is the S3-compatible store (MinIO no longer publishes community images); the one-shot `create-buckets` service creates `archive` and `flink` and is idempotent. SeaweedFS needs `-ip.bind=0.0.0.0` to be reachable from other containers.
+- The Kafka Connect image is built locally (`infra/connect`), resolving the Iceberg sink plus a minimal Hadoop subset (with Woodstox and the commons libraries Hadoop `Configuration` loads). `ICEBERG_VERSION` there must match `iceberg` in the version catalog.
+- Postgres has one schema per service (`infra/postgres/init`); a service never reads another's schema. Postgres 18 keeps data under `/var/lib/postgresql`. Compose credentials are local-only defaults.
+- Windows: scripts set `MSYS_NO_PATHCONV=1` for `docker exec`, strip the `\r` in its output, pass Windows paths (`pwd -W`) under Git Bash, and Make recipes call `bash ./gradlew` because Windows make runs through cmd.
+
+### Catalog immutability
+
+The catalog (`services:catalog`, schema `catalog`) is never edited:
+
+- Triggers reject every `DELETE` and `TRUNCATE`, and every `UPDATE` except setting `effective_until` on a row where it is `NULL`, with every other column unchanged. That end date must not be before the current hour, so hours already rated keep their price and re-rating is reproducible. Tier rows never change.
+- Exclusion constraints (btree_gist) reject overlapping half-open periods per business key: SKU dimensions, band rule per model, list price per SKU, contract price per org and SKU, weight per SKU. Price periods start and end on an hour.
+- Money is `bigint rate_cents / per_units`; weights are `bigint units / per_tokens`. A test bans `numeric`, `real`, `double` and `money` column types. Primary keys are business keys, so writes use `ON CONFLICT DO NOTHING`. Tier shape (ascending `up_to`, an open last tier, one shared `per_units`) is checked by `Pricing` when the catalog loads.
+- A mistaken row is closed from the current hour on and followed by a corrected row.
+
+### Host control totals
+
+- One `billing.v1.ControlTotals` per (host, event hour) with usage since the last publish, carrying the **delta** of requests and per-meter quantities. Counting happens when usage reaches `HostUsageSink`, before Kafka, so totals state what the host produced regardless of delivery.
+- `sequence` increases by one per message per host and is persisted (atomic file replace in the control spool) before hand-off, so it survives restarts; a spool resend carries the same bytes and sequence. Key = host ID; separate producer and spool (`data/control-spool`), so a usage outage cannot also hide the totals.
+- Reconciliation sums deltas per (host, hour) and deduplicates on (host, sequence); a missing sequence means a lost control message. A crash between persisting a sequence and spooling its message leaves a gap that correctly flags possible loss.
+
+### Raw usage archive
+
+- `usage.raw` is protobuf with no schema registry. `libs:usage-connect` `UsageRawConverter` decodes it into a Connect struct; it is shaded (protobuf relocated) and staged by `make connect-plugin`. `usage.raw` stays the only copy: no JSON mirror topic.
+- Table `billing.usage_raw` (Iceberg REST catalog on SeaweedFS): `request_id`, `org_id`, `workspace_id`, `api_key_id`, `model`, `service_tier`, `host_id`, `event_time`, `quantities` (map of permanent meter code to long), partitioned by `hour(event_time)`; schema evolution off.
+- Connector `usage-raw-iceberg` (`infra/connect/connectors`, registered by `make connectors`) uses its own control topic `usage.archive.control` and commits every 10 s. The archive keeps every delivered copy; replay dedupes on `requestId:meterCode`, like the stream. The health check requires the connector and its tasks to be RUNNING.
+
+### Q2 — Context band
+
+Per model, prompt = input + cache-write + cache-read tokens. A prompt **above** the threshold (`>`) selects the above band; at the threshold it stays in the base band. The band applies to every meter of the request; a model with no rule uses band `base`. Implemented in `ContextBandRule`.
+
+### Q3 — Volume tiers
+
+Tiers are graduated only (no all-units). All tiers of one price share one `perUnits`, so `F(total)` sums the tier portions exactly and rounds half-even once. The golden tier table is \$15/M up to 1B tokens and \$12/M above (30M arriving at 990M = 39,000¢).
+
+### Q5 — Lease reporting
+
+Gateways report leases with `ReportLease(host_id, budget_id, lease_id, spent, unused)`: `spent` moves from leased to spent, `unused` is released, idempotent per lease. `LeaseGrant` carries a `lease_id` per (host, budget), because one epoch covers many grants. An unreported lease is charged in full at its 2 s TTL; a late report posts the difference. Leases and reports are forgotten after the max hold time (11 min), after which reconciliation corrects. Gateways report their leases on shutdown.
+
+### Q7 — Catalog snapshot API
+
+Services outside the catalog read it over HTTP, never its schema: `GET /v1/catalog/snapshot?hour=` (protobuf `billing.v1.CatalogSnapshot`, the rows in effect that hour plus the catalog version) and `GET /v1/catalog/version` on `services:catalog`. `HttpCatalogClient` in `libs:contracts` builds the same `RatingLibrary`; the gateway, the aggregator, replay and the usage view use it.
+
+### Q8 — Committed use
+
+A commitment is `commit_cents` per org and billing period (calendar month, UTC), append-only in `rating.commitment` with a contract version. While it applies, all of the org's SKUs are charged at a flat rate (the price's rate, or its **first tier's** for graduated pricing; no tier progression), still as `Cents.charge` on per-SKU running totals. Each rated row draws down the remaining commitment in (hour, SKU) order; `drawdown_cents` is the covered part and the rest is overage at the same rate. At close, the unused commitment is billed as a shortfall line (`CommitmentShortfall`, pseudo-SKU `commit-shortfall`).
+
+### Q9 — Credit grants
+
+A grant (promotional or purchased) is funded by a `TOP_UP` keyed `grant:<grant_id>` and recorded in `balance_ledger.credit_grant`; there is no separate promotional account (that would be a new entry type). Which lot a debit draws is derived by replaying customer-credit postings in time order: debits draw the live lot that expires first, cash last. Returned credit undoes the most recent draws first; credit whose lot already expired goes to cash.
+
+### Q10 — Top-up API
+
+`POST /v1/top-ups` on `services:balance-ledger` calls `BalanceLedger.post(TOP_UP)` with the caller's key: 201 posted, 200 duplicate, 409 key reused with other content. `services:payments` turns `payment_intent.succeeded` into a top-up keyed `stripe:<payment_intent_id>` and posts it through `HttpTopUps` (`payments.ledger-url`); it then publishes a `BudgetChange` (cause `top_up`) so gateways drop a cached deny.
+
+### Q12 — Usage by workspace and key
+
+`usage_hourly` stays keyed by `(org, sku, hour)` for rating. A second rollup, `metering.usage_hourly_by_key` (adding workspace and API key), is written by the same sink in the same transaction, replaced with it on replay, and serves only the usage view (`GET /v1/usage`).
+
 ## Billing Integration Platform (reserved)
 
 This section is a placeholder for the [Self-Serve Billing Integration Platform design](https://claude.ai/code/artifact/5d310048-9b3a-4701-8a5b-a08318e955b7), to be merged later. When it lands, check it against the seams it is most likely to touch: top-up webhooks (seam 5), invoice lines to Stripe (seam 6), the collection paths in Stage 3, and the SKU and price catalog shared by the rating library.
@@ -424,13 +493,9 @@ This section is a placeholder for the [Self-Serve Billing Integration Platform d
 
 **Carried from metering**
 
-- Which input meters count toward the long-context threshold, and is the boundary `>` or `>=`?
-
 - Is a 24 h grace window enough for Finance's close?
 
 - Back-billing policy after an undercount bug: always bill, bill above a threshold, or credit only?
-
-- Volume tier type: graduated or all-units (Finance and Product)?
 
 - Partial usage when an inference process crashes mid-stream: can token counts be recovered?
 

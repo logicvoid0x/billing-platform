@@ -1,6 +1,6 @@
 # Failure drills
 
-Each drill from the plan (Phase 15), the behaviour the design requires, and the automated test
+Each failure drill, the behaviour the design requires, and the automated test
 that exercises it. Run them all with `./gradlew build` (Docker must be running for the
 Testcontainers ones).
 
@@ -13,4 +13,4 @@ Testcontainers ones).
 | Ledger down | Admission is unaffected (the cross-leg rule: gateways never call the ledger); escrow grants wait and resume exactly once; nothing is lost | `services:balance-ledger` LedgerDownDrillTest (the ledger database switched off and back on) | Covered |
 
 Remaining refinement: a real network partition on the local stack through toxiproxy
-(`infra/toxiproxy`), once the services run together (open questions Q7 and Q10).
+(`infra/toxiproxy`), now that the services can run together.

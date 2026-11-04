@@ -2,7 +2,7 @@ package com.logicvoid0x.billing.money;
 
 /**
  * Integer money: amounts are {@code long} cents; prices are whole cents per a fixed number of
- * units. See docs/decisions/0002-money-in-cents.md.
+ * units. See docs/design.md, "Money representation".
  *
  * <p>Never round per request. Keep a running quantity per SKU and charge each increment with {@link
  * #charge}; the increments sum exactly to {@link #forTotal} of the final quantity in any order, so

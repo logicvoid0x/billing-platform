@@ -8,8 +8,8 @@ import java.util.function.BiConsumer;
 
 /**
  * Wraps the top-up sink so every top-up that is actually posted publishes a {@code BudgetChange}
- * (cause {@code top_up}) to {@code budget.changes}, keyed by the org's balance budget (plan: "so
- * the home shard recomputes the mode; gateways drop cached DENY within 5 s"). A replayed top-up
+ * (cause {@code top_up}) to {@code budget.changes}, keyed by the org's balance budget (requirement:
+ * "so the home shard recomputes the mode; gateways drop cached DENY within 5 s"). A replayed top-up
  * posts nothing and so publishes nothing. The version is the payment's own time, in milliseconds,
  * so consumers apply changes in payment order and dedupe on (budget_id, version).
  */

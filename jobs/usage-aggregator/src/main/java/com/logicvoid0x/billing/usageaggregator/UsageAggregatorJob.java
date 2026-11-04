@@ -19,8 +19,8 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 
 /**
  * The Flink usage aggregator (design: "validate, resolve SKUs, dedupe, one batch per checkpoint").
- * Stages are added task by task: P5.1 source, validation, SKU resolution and the dead-letter queue;
- * P5.2 dedupe; P5.3 hourly windows; P5.4 the checkpoint-aligned batch sink.
+ * Stages: source, validation, SKU resolution and the dead-letter queue; dedupe; hourly windows; the
+ * checkpoint-aligned batch sink.
  */
 public final class UsageAggregatorJob {
   /** Raw usage topic. */
@@ -29,7 +29,7 @@ public final class UsageAggregatorJob {
   /** Dead-letter topic. */
   public static final String DLQ_TOPIC = "usage.dlq";
 
-  /** Checkpoint interval (plan: 15-30 s). */
+  /** Checkpoint interval (requirement: 15-30 s). */
   public static final Duration CHECKPOINT_INTERVAL = Duration.ofSeconds(20);
 
   /** Lines later than the allowed lateness. */
@@ -56,7 +56,7 @@ public final class UsageAggregatorJob {
     return lines.keyBy(DedupeLines::key).process(new DedupeLines()).name("dedupe").uid("dedupe");
   }
 
-  /** RocksDB state (plan: "RocksDB state backend"); dedupe keeps 7 days of keys. */
+  /** RocksDB state (requirement: "RocksDB state backend"); dedupe keeps 7 days of keys. */
   public static Configuration stateConfig() {
     Configuration c = new Configuration();
     c.set(StateBackendOptions.STATE_BACKEND, "rocksdb");
@@ -66,7 +66,7 @@ public final class UsageAggregatorJob {
   /** Wires the job between Kafka topics. */
   public static void build(
       StreamExecutionEnvironment env, String bootstrapServers, RatingSource rating, Jdbc metering) {
-    // One usage_hourly batch per checkpoint (P5.4); exactly-once barriers, 20 s apart.
+    // One usage_hourly batch per checkpoint; exactly-once barriers, 20 s apart.
     env.enableCheckpointing(CHECKPOINT_INTERVAL.toMillis(), CheckpointingMode.EXACTLY_ONCE);
     env.configure(stateConfig());
     KafkaSource<RawUsage> source =

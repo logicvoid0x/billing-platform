@@ -2,7 +2,7 @@ package com.logicvoid0x.billing.domain;
 
 /** The unit a budget counts in; persisted by {@link #code()}, never by name. */
 public enum BudgetUnit {
-  /** US cents ({@code long}); see docs/decisions/0002-money-in-cents.md. */
+  /** US cents ({@code long}); see docs/design.md, "Money representation". */
   CENTS("cents"),
   /** Weighted usage units from the allowance weight book ({@code long}). */
   USAGE_UNITS("usage_units");

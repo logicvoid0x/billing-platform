@@ -10,9 +10,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * {@code POST /v1/top-ups} (open question Q10): posts a {@code TOP_UP} entry, idempotent on its
- * business key ({@code stripe:<payment_intent_id>}, {@code grant:<id>}, ...). Payments calls it
- * from the Stripe webhook and auto-recharge; it never reads this service's schema.
+ * {@code POST /v1/top-ups} (design Q10): posts a {@code TOP_UP} entry, idempotent on its business
+ * key ({@code stripe:<payment_intent_id>}, {@code grant:<id>}, ...). Payments calls it from the
+ * Stripe webhook and auto-recharge; it never reads this service's schema.
  *
  * <ul>
  *   <li>201 {@code {"result":"posted"}}: posted now.

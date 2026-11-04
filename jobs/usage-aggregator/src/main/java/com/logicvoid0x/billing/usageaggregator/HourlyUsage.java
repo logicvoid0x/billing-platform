@@ -9,7 +9,7 @@ import java.util.Objects;
  * and line count added since the previous firing of that hour's window. Increments for the same key
  * sum to the hour's total, so the sink can apply them as additions. {@code usage_hourly} adds them
  * per (org, SKU, hour); {@code usage_hourly_by_key} keeps workspace and key for the usage view
- * (open question Q12, option b).
+ * (design Q12, option b).
  *
  * @param orgId the org
  * @param workspaceId the workspace

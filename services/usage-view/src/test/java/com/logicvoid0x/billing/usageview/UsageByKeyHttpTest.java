@@ -41,8 +41,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * P14.1 "Done when": the usage API matches usage_hourly exactly. Usage is written by the
- * aggregator's own checkpointed sink; the catalog is a stand-in serving the golden catalog.
+ * The usage API matches usage_hourly exactly. Usage is written by the aggregator's own checkpointed
+ * sink; the catalog is a stand-in serving the golden catalog.
  */
 @Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)

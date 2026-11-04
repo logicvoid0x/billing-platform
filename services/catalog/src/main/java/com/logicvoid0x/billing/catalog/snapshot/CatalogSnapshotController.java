@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Catalog reads for services outside the catalog (open question Q7), which must not read the {@code
+ * Catalog reads for services outside the catalog (design Q7), which must not read the {@code
  * catalog} schema directly:
  *
  * <ul>

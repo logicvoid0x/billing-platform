@@ -18,7 +18,7 @@ import java.util.OptionalLong;
  * <ul>
  *   <li>Without a commitment: {@code F(after) - F(before)} with the SKU's pricing (path TIERED).
  *   <li>With one: a flat rate (first tier for graduated pricing), drawing the remaining commitment
- *       down (path COMMIT; open-questions Q8).
+ *       down (path COMMIT; design Q8).
  * </ul>
  */
 final class PeriodPricer {

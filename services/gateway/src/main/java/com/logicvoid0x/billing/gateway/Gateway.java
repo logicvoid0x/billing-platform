@@ -24,7 +24,7 @@ import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 /**
- * One gateway host's request path (plan: "mints request IDs, runs a per-minute limiter stub,
+ * One gateway host's request path (requirement: "mints request IDs, runs a per-minute limiter stub,
  * admits, proxies the simulator's stream, settles with the rating library, publishes SettleRecord
  * to budget.settle and the customer-visible usage to gateway.log").
  *

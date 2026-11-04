@@ -1,5 +1,5 @@
 // Catalog snapshot served by services:catalog (GET /v1/catalog/snapshot?hour=) to services that
-// rate or resolve usage outside the catalog (open question Q7, option: HTTP snapshot).
+// rate or resolve usage outside the catalog (design Q7, option: HTTP snapshot).
 // Amounts are int64 cents over int64 units (Cents.Rate); never decimals. Field numbers are never
 // reused.
 syntax = "proto3";

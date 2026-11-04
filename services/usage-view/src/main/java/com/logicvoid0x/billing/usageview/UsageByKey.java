@@ -15,10 +15,10 @@ import java.util.function.Function;
 import javax.sql.DataSource;
 
 /**
- * Usage by org, workspace, API key, model and hour (plan P14.1), read from {@code
- * metering.usage_hourly_by_key} (open question Q12, option b). That rollup is written in the same
- * transaction as {@code usage_hourly}, so these rows summed over workspace and key equal it
- * exactly. The model comes from the SKU in the catalog of the row's hour.
+ * Usage by org, workspace, API key, model and hour, read from {@code metering.usage_hourly_by_key}
+ * (design Q12, option b). That rollup is written in the same transaction as {@code usage_hourly},
+ * so these rows summed over workspace and key equal it exactly. The model comes from the SKU in the
+ * catalog of the row's hour.
  */
 public final class UsageByKey {
   /** Model shown for a SKU the catalog of that hour does not know. */

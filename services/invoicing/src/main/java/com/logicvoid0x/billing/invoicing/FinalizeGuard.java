@@ -7,9 +7,9 @@ import java.util.TreeSet;
 
 /**
  * Before an invoice is finalized in Stripe, it is read back and compared with the rated ledger
- * (plan: "require every line amount and the subtotal to equal the rated ledger to the cent").
- * Finalizing is refused on any difference, so a customer never receives an invoice the rated ledger
- * does not support.
+ * (requirement: "require every line amount and the subtotal to equal the rated ledger to the
+ * cent"). Finalizing is refused on any difference, so a customer never receives an invoice the
+ * rated ledger does not support.
  */
 public final class FinalizeGuard {
   /** The invoice as Stripe holds it. */

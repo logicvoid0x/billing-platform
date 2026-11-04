@@ -6,10 +6,10 @@ import java.util.Objects;
 import java.util.TreeMap;
 
 /**
- * A prepaid account's period statement (plan: "rated lines plus credit applied from the balance
- * ledger"). The lines say what the period cost; the credit section says how the balance paid for
- * it. The statement is issued only if both sides agree: usage recognized in the balance ledger
- * equals the rated total (the true-up invariant), and the closing balance equals the opening
+ * A prepaid account's period statement (requirement: "rated lines plus credit applied from the
+ * balance ledger"). The lines say what the period cost; the credit section says how the balance
+ * paid for it. The statement is issued only if both sides agree: usage recognized in the balance
+ * ledger equals the rated total (the true-up invariant), and the closing balance equals the opening
  * balance plus top-ups minus usage minus expired grants. Long cents throughout.
  *
  * @param orgId the account

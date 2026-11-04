@@ -2,7 +2,7 @@
 #   make up            single-broker Kafka and everything else
 #   make up-multi      adds the 3-broker Kafka profile (replication 3, min.insync.replicas 2)
 #   make up-stripe     adds the Stripe CLI webhook forwarder (needs STRIPE_API_KEY)
-# Image tags are pinned; they were checked to exist on 2026-11-01 (docs/decisions/0003-local-env.md).
+# Image tags are pinned; they were checked to exist on 2026-11-01 (docs/design.md, "Local environment").
 # Credentials here are local-only defaults, never used outside this file.
 name: billing
 

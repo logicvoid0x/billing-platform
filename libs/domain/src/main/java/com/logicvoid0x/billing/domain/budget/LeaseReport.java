@@ -3,7 +3,7 @@ package com.logicvoid0x.billing.domain.budget;
 import java.util.Objects;
 
 /**
- * The shard's answer to a gateway's lease report (open question Q5).
+ * The shard's answer to a gateway's lease report (design Q5).
  *
  * @param status what happened
  * @param released credit made available again, in the budget's unit (0 unless reported)

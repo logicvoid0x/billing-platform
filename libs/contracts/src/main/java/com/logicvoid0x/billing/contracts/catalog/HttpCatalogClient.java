@@ -21,7 +21,7 @@ import java.util.Objects;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Reads the catalog from the catalog service's snapshot API (open question Q7): {@code GET
+ * Reads the catalog from the catalog service's snapshot API (design Q7): {@code GET
  * /v1/catalog/snapshot?hour=} for the rows of one hour, {@code GET /v1/catalog/version} for the
  * current catalog version.
  *

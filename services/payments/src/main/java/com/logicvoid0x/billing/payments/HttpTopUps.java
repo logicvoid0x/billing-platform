@@ -15,9 +15,9 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Posts top-ups to the balance-ledger service's {@code POST /v1/top-ups} (open question Q10).
- * Idempotent on the key at the ledger: 201 is "posted now", 200 is "already posted". Anything else
- * throws, so the caller fails and the payment is retried (Stripe retries webhooks for days).
+ * Posts top-ups to the balance-ledger service's {@code POST /v1/top-ups} (design Q10). Idempotent
+ * on the key at the ledger: 201 is "posted now", 200 is "already posted". Anything else throws, so
+ * the caller fails and the payment is retried (Stripe retries webhooks for days).
  */
 public final class HttpTopUps implements StripeWebhook.TopUps {
   /** The ledger refused or could not be reached; nothing is known to be posted. */

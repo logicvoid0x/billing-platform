@@ -7,10 +7,11 @@ import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 
 /**
  * Event-time trigger that also fires every {@code interval} of processing time while the window is
- * open, so the usage view sees an hour's usage before the hour ends (plan: "under 60 s fresh").
- * Firings never purge: {@link HourlyWindows}' increment function emits only what changed since the
- * previous firing, so early firings add up to the same hour totals. As with Flink's event-time
- * trigger, the window fires when the watermark passes its end and again for each late element.
+ * open, so the usage view sees an hour's usage before the hour ends (requirement: "under 60 s
+ * fresh"). Firings never purge: {@link HourlyWindows}' increment function emits only what changed
+ * since the previous firing, so early firings add up to the same hour totals. As with Flink's
+ * event-time trigger, the window fires when the watermark passes its end and again for each late
+ * element.
  */
 public final class EarlyFiringTrigger extends Trigger<Object, TimeWindow> {
   private static final long serialVersionUID = 1L;

@@ -88,7 +88,7 @@ public final class GoldenCases {
             new ListPrice("sku_out", list, always),
             new ListPrice(
                 "sku_tiered",
-                // Assumed table, see docs/decisions/open-questions.md Q3.
+                // Assumed table, see docs/design.md, Q3.
                 Pricing.graduated(
                     List.of(
                         new Pricing.Tier(BILLION, new Rate(1500, 1_000_000)),

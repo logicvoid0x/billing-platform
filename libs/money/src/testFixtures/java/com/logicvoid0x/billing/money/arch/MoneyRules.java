@@ -28,7 +28,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * Money code uses {@code long} cents only (docs/decisions/0002-money-in-cents.md): no {@code
+ * Money code uses {@code long} cents only (docs/design.md, "Money representation"): no {@code
  * double}, {@code float}, {@code BigDecimal} or {@code BigInteger}. Two layers: an ArchUnit rule on
  * the compiled classes (fields, signatures, dependencies) and a source scan that also sees local
  * variables and casts, which bytecode analysis cannot.

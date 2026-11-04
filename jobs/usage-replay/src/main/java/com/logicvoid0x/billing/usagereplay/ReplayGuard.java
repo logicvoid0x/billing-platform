@@ -11,8 +11,8 @@ import java.util.SortedSet;
 import java.util.TreeSet;
 
 /**
- * Refuses to replay hours the stream may still write (plan: "refuse to replay hours inside the
- * allowed-lateness window"). An hour is sealed once the watermark has passed its end plus the
+ * Refuses to replay hours the stream may still write (requirement: "refuse to replay hours inside
+ * the allowed-lateness window"). An hour is sealed once the watermark has passed its end plus the
  * allowed lateness; the watermark trails event time by up to the out-of-orderness bound, so an hour
  * {@code h} is sealed at {@code h + 1 h + lateness + out-of-orderness}.
  */

@@ -1,4 +1,4 @@
-# Single source of versions. Resolved 2026-11-01; see docs/decisions/0001-versions.md.
+# Single source of versions. Resolved 2026-11-01; see docs/design.md, "Platform and toolchain".
 [versions]
 kafka = "4.3.2"
 flink = "2.2.1"

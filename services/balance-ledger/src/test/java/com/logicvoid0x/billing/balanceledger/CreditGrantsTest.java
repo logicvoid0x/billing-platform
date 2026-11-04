@@ -80,7 +80,7 @@ class CreditGrantsTest {
     ledger.post(new Entry("ret_g3", EntryType.ESCROW_RETURN, org, "us", 600, day(2)));
     assertThat(lots(org, day(3))).containsExactly("g3=200", "cash=1000");
 
-    // A return after the grant expired refunds to cash (open-questions Q9).
+    // A return after the grant expired refunds to cash (design Q9).
     String org2 = "org_g4";
     grants.grant("g4", org2, 500, DAY0, day(1), "PROMOTIONAL");
     ledger.post(new Entry("esc_g4", EntryType.ESCROW_GRANT, org2, "us", 500, DAY0.plusSeconds(60)));
